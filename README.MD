@@ -1,4 +1,4 @@
-# ![icon](https://github.com/asivery/appload/blob/master/icon/appload?raw=true) AppLoad
+# ![icon](https://github.com/asivery/rmpp-appload/blob/master/icon/appload?raw=true) AppLoad
 
 AppLoad is a xovi extension for the RMPP which lets you write custom applications for the RMPP.
 
