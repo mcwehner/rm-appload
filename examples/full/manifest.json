@@ -1,0 +1,8 @@
+{
+    "name": "Backend App",
+    "loadsBackend": true,
+    "entry": "/ui/example.qml",
+    "id": "example",
+    "supportsScaling": false,
+    "canHaveMultipleFrontends": true
+}
