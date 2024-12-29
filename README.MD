@@ -11,6 +11,7 @@ This extension depends on [qt-resource-rebuilder](https://github.com/asivery/rmp
 ## How to use?
 
 To put new apps on the tablet, place their directories in `/home/root/xovi/exthome/appload/`. To close fullscreen apps, drag your finger from the center-top of the screen to the center.
+To start an application as a window, long-press its icon in the AppLoad menu.
 
 ## Applications' format
 
