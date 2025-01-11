@@ -5,6 +5,7 @@ use std::env::args;
 use std::io;
 use std::mem;
 use std::mem::transmute;
+use std::sync::mpsc;
 
 #[repr(C)]
 struct MessageHeader {
@@ -24,6 +25,7 @@ pub const MSG_SYSTEM_NEW_COORDINATOR: u32 = 0xFFFFFFFE;
 pub struct BackendReplier {
     fd: i32,
     locked: bool,
+    internal_sender: mpsc::Sender<Message>
 }
 
 impl BackendReplier {
@@ -36,6 +38,13 @@ impl BackendReplier {
         send_message(self.fd, msg_type, contents)
     }
 
+    pub fn send_internal(&self, msg_type: u32, contents: String) {
+        self.internal_sender.send(Message {
+            contents,
+            msg_type,
+        }).unwrap();
+    }
+
     fn lock(&mut self) {
         self.locked = true;
     }
@@ -46,99 +55,125 @@ pub trait AppLoadBackend {
     async fn handle_message(&mut self, functionality: &BackendReplier, message: Message);
 }
 
-pub async fn start(backend: &mut dyn AppLoadBackend) -> Result<()> {
-    let args: Vec<String> = args().collect();
-    let fd = unsafe { socket(AF_UNIX, SOCK_SEQPACKET, 0) };
-    if fd == -1 {
-        return Err(Error::new(io::Error::last_os_error()));
-    }
+pub struct AppLoad<'a> {
+    backend: &'a mut dyn AppLoadBackend,
+    fd: i32,
+    internal_channel: mpsc::Receiver<Message>,
+    internal_sender: mpsc::Sender<Message>,
+}
 
-    let mut addr = sockaddr_un {
-        sun_family: AF_UNIX as u16,
-        sun_path: [0; 108],
-    };
-    let bytes = args[1].as_bytes();
-    addr.sun_path[..bytes.len()].copy_from_slice(unsafe { transmute(bytes) });
-
-    let connect_res = unsafe {
-        libc::connect(
-            fd,
-            &addr as *const _ as *const libc::sockaddr,
-            mem::size_of::<sockaddr_un>() as u32,
-        )
-    };
-
-    if connect_res != 0 {
-        return Err(Error::new(io::Error::last_os_error()));
-    }
-
-    let mut header = MessageHeader {
-        length: 0,
-        msg_type: 0,
-    };
-
-    let mut raw_buffer = vec![0u8; MAX_PACKAGE_SIZE];
-
-    let mut replier = BackendReplier { locked: false, fd };
-
-    loop {
-        let mut recv_res = unsafe {
-            libc::recv(
-                fd,
-                &mut header as *mut _ as *mut c_void,
-                mem::size_of::<MessageHeader>(),
-                0,
-            )
-        };
-
-        if recv_res < 1 {
-            break;
-        }
-
-        if header.length as usize > MAX_PACKAGE_SIZE {
-            return Err(Error::msg("Message too exceeds protocol spec."));
-        }
-
-        recv_res = unsafe {
-            libc::recv(
-                fd,
-                raw_buffer.as_mut_ptr() as *mut _ as *mut c_void,
-                header.length as usize,
-                0,
-            )
-        };
-
-        if recv_res < 1 && header.length != 0 {
+impl<'a> AppLoad<'a> {
+    pub fn new(backend: &'a mut dyn AppLoadBackend) -> Result<Self> {
+        let args: Vec<String> = args().collect();
+        let fd = unsafe { socket(AF_UNIX, SOCK_SEQPACKET, 0) };
+        if fd == -1 {
             return Err(Error::new(io::Error::last_os_error()));
         }
 
-        let string = match header.length {
-            0 => String::new(),
-            len => String::from_utf8_lossy(&raw_buffer[0..len as usize]).into(),
+        let mut addr = sockaddr_un {
+            sun_family: AF_UNIX as u16,
+            sun_path: [0; 108],
         };
-        backend
+        let bytes = args[1].as_bytes();
+        addr.sun_path[..bytes.len()].copy_from_slice(unsafe { transmute(bytes) });
+
+        let connect_res = unsafe {
+            libc::connect(
+                fd,
+                &addr as *const _ as *const libc::sockaddr,
+                mem::size_of::<sockaddr_un>() as u32,
+            )
+        };
+
+        if connect_res != 0 {
+            return Err(Error::new(io::Error::last_os_error()));
+        }
+
+        let (s, r) = mpsc::channel();
+
+        Ok(Self { backend, fd, internal_channel: r, internal_sender: s })
+    }
+
+    pub fn create_replier(&self) -> BackendReplier {
+        BackendReplier {
+            locked: false,
+            fd: self.fd,
+            internal_sender: self.internal_sender.clone(),
+        }
+    }
+
+    pub async fn run(&mut self) -> Result<()> {
+        let mut header = MessageHeader {
+            length: 0,
+            msg_type: 0,
+        };
+
+        let mut raw_buffer = vec![0u8; MAX_PACKAGE_SIZE];
+        let mut replier = self.create_replier();
+
+        loop {
+            let mut recv_res = unsafe {
+                libc::recv(
+                    self.fd,
+                    &mut header as *mut _ as *mut c_void,
+                    mem::size_of::<MessageHeader>(),
+                    0,
+                )
+            };
+
+            if recv_res < 1 {
+                break;
+            }
+
+            if header.length as usize > MAX_PACKAGE_SIZE {
+                return Err(Error::msg("Message too exceeds protocol spec."));
+            }
+
+            recv_res = unsafe {
+                libc::recv(
+                    self.fd,
+                    raw_buffer.as_mut_ptr() as *mut _ as *mut c_void,
+                    header.length as usize,
+                    0,
+                )
+            };
+
+            if recv_res < 1 && header.length != 0 {
+                return Err(Error::new(io::Error::last_os_error()));
+            }
+
+            let string = match header.length {
+                0 => String::new(),
+                len => String::from_utf8_lossy(&raw_buffer[0..len as usize]).into(),
+            };
+            self.backend
+                .handle_message(
+                    &replier,
+                    Message {
+                        contents: string,
+                        msg_type: header.msg_type,
+                    },
+                )
+                .await;
+
+            for entry in self.internal_channel.try_iter() {
+                self.backend.handle_message(&replier, entry).await;
+            }
+        }
+        replier.lock();
+
+        self.backend
             .handle_message(
                 &replier,
                 Message {
-                    contents: string,
-                    msg_type: header.msg_type,
+                    msg_type: MSG_SYSTEM_TERMINATE,
+                    contents: String::default(),
                 },
             )
             .await;
+
+        Ok(())
     }
-    replier.lock();
-
-    backend
-        .handle_message(
-            &replier,
-            Message {
-                msg_type: MSG_SYSTEM_TERMINATE,
-                contents: String::default(),
-            },
-        )
-        .await;
-
-    Ok(())
 }
 
 fn send_message(fd: i32, msg_type: u32, data: &str) -> Result<()> {
