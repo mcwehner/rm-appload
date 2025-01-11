@@ -21,7 +21,7 @@ public:
     QString applicationID() const;
     void setApplicationID(const QString &app);
     Q_INVOKABLE void sendMessage(int type, const QString &string);
-    Q_INVOKABLE void quit();
+    Q_INVOKABLE void terminate();
 // Internal C++ API:
     void propagateMessage(int type, const QString &string);
 

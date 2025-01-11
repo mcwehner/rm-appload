@@ -25,6 +25,6 @@ void AppLoad::sendMessage(int type, const QString &message){
     appload::management::sendMessageTo(_applicationID, type, message);
 }
 
-void AppLoad::quit(){
+void AppLoad::terminate(){
     appload::management::terminate(_applicationID);
 }
