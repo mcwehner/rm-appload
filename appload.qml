@@ -153,13 +153,13 @@ Rectangle {
     Component {
         id: windowArchetype
 
-        Rectangle {
+        FocusScope {
             id: root
             Drag.active: topbarDragHandle.drag.active
             implicitWidth: 500
             implicitHeight: 700
-            width: 500
-            height: 700
+            width: 1620 / 3
+            height: 2160 / 3 + topbar.height
             z: 100
 
             property alias appName: _appName.text
@@ -186,9 +186,10 @@ Rectangle {
                 id: resizeHandle
                 anchors.bottom: parent.bottom
                 anchors.right: parent.right
-                width: 20
-                height: 20
+                width: 100
+                height: 100
                 cursorShape: Qt.SizeFDiagCursor
+                z: 10001
 
                 // Variables to track resizing
                 property real startX: 0
@@ -218,7 +219,7 @@ Rectangle {
                         let scale = Math.min(height / 2160, width / 1620);
 
                         width = 1620 * scale
-                        height = 2160 * scale
+                        height = 2160 * scale + topbar.height
                     }
 
                     root.width = width;
@@ -228,7 +229,6 @@ Rectangle {
                 onPositionChanged: {
                     let deltaX = mouse.x - startX
                     let deltaY = mouse.y - startY
-                    // Update the size of the rectangle based on the mouse movement
                     let width = Math.max(50, root.width + deltaX)  // Prevent going too small
                     let height = Math.max(50, root.height + deltaY)  // Prevent going too small
 
@@ -239,7 +239,7 @@ Rectangle {
                         let scale = Math.min(height / 2160, width / 1620);
 
                         resizingFrame.width = 1620 * scale
-                        resizingFrame.height = 2160 * scale
+                        resizingFrame.height = 2160 * scale + topbar.height
                     }
                 }
             }
@@ -256,7 +256,7 @@ Rectangle {
                 id: topbar
                 width: parent.width
                 height: 75
-                color: "#A0A0A0"
+                color: root.focus ? "#A0A0A0" : "#707070"
                 Text {
                     id: _appName
                     anchors.fill: parent
@@ -270,6 +270,10 @@ Rectangle {
                     id: topbarDragHandle
                     anchors.fill: parent
                     drag.target: root
+
+                    onClicked: () => {
+                        root.forceActiveFocus();
+                    }
                 }
 
                 Rectangle {
