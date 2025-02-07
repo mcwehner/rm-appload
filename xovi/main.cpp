@@ -1,17 +1,13 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 
-#include "../AppLoadCoordinator.h"
-#include "../AppLibrary.h"
-#include "../AppLoad.h"
-#include "../management.h"
-#include "../library.h"
-#include "../icon.h"
-
-extern const struct XoViEnvironment {
-    char *(*getExtensionDirectory)(const char *family);
-    void (*requireExtension)(const char *name, unsigned char major, unsigned char minor, unsigned char patch);
-} *Environment;
+#include "AppLoadCoordinator.h"
+#include "AppLibrary.h"
+#include "AppLoad.h"
+#include "management.h"
+#include "library.h"
+#include "icon.h"
+#include "xovi.h"
 
 extern "C" {
     void _xovi_construct() {
