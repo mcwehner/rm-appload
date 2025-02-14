@@ -15,6 +15,93 @@ static QString randString(int len)
     return str;
 }
 
+appload::library::ExternalApplication::ExternalApplication(QString root): root(root) {
+    parseManifest();
+}
+
+void appload::library::ExternalApplication::parseManifest() {
+    QString filePath = root + "/external.manifest.json";
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        CERR << "Unable to open file: " << filePath.toStdString() << std::endl;
+        return;
+    }
+    QByteArray jsonData = file.readAll();
+    file.close();
+
+    QJsonDocument doc = QJsonDocument::fromJson(jsonData);
+    if (doc.isNull() || !doc.isObject()) {
+        CERR << "Invalid JSON data" << std::endl;
+        return;
+    }
+
+    QJsonObject jsonObject = doc.object();
+
+    // Required:
+    appName = jsonObject.value("name").toString();
+    execPath = jsonObject.value("application").toString();
+
+    // Optional:
+    workingDirectory = jsonObject.value("workingDirectory").toString(root);
+    args = jsonObject.value("args").toVariant().toStringList();
+    QJsonObject env = jsonObject.value("environment").toObject();
+    for(auto entry = env.begin(); entry != env.end(); entry++) {
+        environment[entry.key()] = entry.value().toString();
+    }
+
+    valid = !appName.isEmpty() && !execPath.isEmpty();
+    if(valid) {
+        if(!execPath.startsWith("/")) {
+            execPath = "./" + execPath;
+        }
+    }
+}
+
+void appload::library::ExternalApplication::launch() const {
+    QDEBUG << "Starting external binary" << execPath;
+
+    QProcess *process = new QProcess();
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove("LD_PRELOAD");
+    for(const auto &entry : environment) {
+        env.insert(entry.first, entry.second);
+    }
+    process->setProcessEnvironment(env);
+    process->setWorkingDirectory(workingDirectory);
+    process->setProcessChannelMode(QProcess::ForwardedChannels);
+    process->start(execPath, args);
+
+    if (!process->waitForStarted()) {
+        qWarning() << "Failed to start process:" << process->errorString();
+        delete process;
+        return;
+    }
+
+    QString appPath = execPath;
+    QObject::connect(process, &QProcess::errorOccurred, [appPath, process](QProcess::ProcessError error) {
+        qWarning() << "Process error for" << appPath << ":" << error;
+        process->deleteLater();
+    });
+
+    QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [appPath, process](int exitCode, QProcess::ExitStatus status) {
+        QDEBUG << "Process for" << appPath << "finished with exit code" << exitCode << "and status" << status;
+        process->deleteLater();
+    });
+}
+
+QString appload::library::ExternalApplication::getIconPath() const {
+    auto path = QFileInfo(root + "/icon.png");
+    if(path.exists()) {
+        return "file://" + path.canonicalFilePath();
+    }
+    return "qrc:/appload/appload";
+}
+
+QString appload::library::ExternalApplication::getAppName() const {
+    return appName;
+}
+
+
 appload::library::LoadedApplication::LoadedApplication(QString root) : root(root){
     parseManifest();
 }
@@ -59,7 +146,11 @@ void appload::library::LoadedApplication::startAppBackend() {
 }
 
 QString appload::library::LoadedApplication::getIconPath() const {
-    return "file://" + QFileInfo(root + "/icon.png").canonicalFilePath();
+    auto path = QFileInfo(root + "/icon.png");
+    if(path.exists()) {
+        return "file://" + path.canonicalFilePath();
+    }
+    return "qrc:/appload/appload";
 }
 
 QString appload::library::LoadedApplication::getAppName() const {
@@ -154,6 +245,9 @@ int appload::library::loadApplications() {
             appload::library::applications.erase(entry.first);
         }
     }
+    for(auto entry : appload::library::externalApplications) {
+        delete entry.second;
+    }
 
     const char *directoryPath = APPLICATION_DIRECTORY_ROOT;
     DIR *dir;
@@ -194,6 +288,19 @@ int appload::library::loadApplications() {
                     CERR << "Cannot load " << app->getID().toStdString() << " - already loaded." << std::endl;
                     delete app;
                 }
+                continue;
+            }
+
+            snprintf(manifestPath, sizeof(manifestPath), "%s/external.manifest.json", entryPath);
+            if (access(manifestPath, F_OK) == 0) {
+                ExternalApplication *app = new ExternalApplication(QString(QByteArray(entryPath, strlen(entryPath))));
+                if(!app->valid){
+                    delete app;
+                    CERR << "Encountered an error while processing external " << entryPath << std::endl;
+                } else {
+                    loadedCount += 1;
+                    appload::library::externalApplications[QString("external::") + entryPath] = app;
+                }
             }
         }
     }
@@ -222,4 +329,8 @@ appload::library::LoadedApplication *appload::library::get(const QString &id) {
 
 const std::map<QString, appload::library::LoadedApplication*> &appload::library::getRef() {
     return appload::library::applications;
+}
+
+const std::map<QString, appload::library::ExternalApplication *>&appload::library::getExternals() {
+    return appload::library::externalApplications;
 }

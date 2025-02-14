@@ -121,9 +121,16 @@ Rectangle {
                 MouseArea {
                     anchors.fill: parent
                     onClicked: () => {
-                        coord.loadApplication(modelData.id);
+                        if(modelData.external) {
+                            library.launchExternal(modelData.id);
+                        } else {
+                            coord.loadApplication(modelData.id);
+                        }
                     }
                     onPressAndHold: () => {
+                        if(modelData.external) {
+                            return;
+                        }
                         // Create a new window
                         if(library.isFrontendRunningFor(modelData.id) && !modelData.canHaveMultipleFrontends) {
                             console.log("Cannot load multiple frontends for app. It doesn't support it.");

@@ -19,6 +19,8 @@
 #include <QByteArray>
 #include <QResource>
 #include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QFile>
 
 #include <stdio.h>
@@ -30,6 +32,28 @@
 #include "config.h"
 
 namespace appload::library {
+    class ExternalApplication {
+        public:
+        ExternalApplication(QString root);
+        QString getIconPath() const;
+        QString getAppName() const;
+        void launch() const;
+
+        bool valid = false;
+
+        private:
+        QString root;
+
+        QString appName;
+        QString execPath;
+
+        QString workingDirectory;
+        QStringList args;
+        std::map<QString, QString> environment;
+
+        void parseManifest();
+    };
+
     class LoadedApplication {
     public:
         LoadedApplication(QString root);
@@ -61,11 +85,12 @@ namespace appload::library {
         bool _canHaveMultipleFrontends;
         bool frontendLoaded = false;
         void parseManifest();
-        void loadResources();
     };
 
     static std::map<QString, LoadedApplication*> applications;
+    static std::map<QString, ExternalApplication*> externalApplications;
     int loadApplications();
     appload::library::LoadedApplication *get(const QString &id);
     const std::map<QString, appload::library::LoadedApplication*> &getRef();
+    const std::map<QString, appload::library::ExternalApplication*> &getExternals();
 };

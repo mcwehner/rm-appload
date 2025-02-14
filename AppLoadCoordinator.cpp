@@ -42,7 +42,7 @@ void AppLoadCoordinator::loadApplication(QString identifier) {
     definition->loadedFrontendInstanceCount++;
     load(qmlEP);
     QDEBUG << "Loading" << qmlEP;
-    _applicationQMLRoot = identifier;
+    applicationLoadedID = identifier;
 }
 
 void AppLoadCoordinator::load(QString root) {
@@ -53,5 +53,5 @@ void AppLoadCoordinator::load(QString root) {
 }
 
 QString AppLoadCoordinator::getApplicationID() {
-    return _applicationQMLRoot;
+    return applicationLoadedID;
 }

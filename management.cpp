@@ -31,10 +31,6 @@ void appload::management::unregisterEndpoint(QString id, AppLoad *appload) {
             CERR << "Unregistered appload endpoint ID: " << id.toStdString() << " at " << appload << std::endl;
         }
         sendMessageTo(id, MESSAGE_SYSTEM_LOST_COORDINATOR, QString::number(endpoints.size()));
-        if(endpoints.size() == 0){
-            appload::management::endpoints.erase(position);
-            CERR << "Since no endpoint remain, destroyed registry for ID:" << id.toStdString() << std::endl;
-        }
     }
 }
 

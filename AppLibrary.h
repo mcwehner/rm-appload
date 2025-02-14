@@ -20,18 +20,20 @@ class AppLoadApplication : public QObject {
     Q_PROPERTY(QString icon READ icon CONSTANT)
     Q_PROPERTY(bool supportsScaling READ supportsScaling)
     Q_PROPERTY(bool canHaveMultipleFrontends READ canHaveMultipleFrontends)
+    Q_PROPERTY(bool external READ external)
 
 public:
     explicit AppLoadApplication(QObject *parent = nullptr)
         : QObject(parent) {}
-    AppLoadApplication(const QString &id, const QString &name, const QString &icon, bool supportsScaling, bool canHaveMultipleFrontends, QObject *parent = nullptr)
-        : QObject(parent), _id(id), _name(name), _icon(icon), _supportsScaling(supportsScaling), _canHaveMultipleFrontends(canHaveMultipleFrontends) {}
+    AppLoadApplication(const QString &id, const QString &name, const QString &icon, bool supportsScaling, bool canHaveMultipleFrontends, bool external, QObject *parent = nullptr)
+        : QObject(parent), _id(id), _name(name), _icon(icon), _supportsScaling(supportsScaling), _canHaveMultipleFrontends(canHaveMultipleFrontends), _external(external) {}
 
     QString id() const { return _id; }
     QString name() const { return _name; }
     QString icon() const { return _icon; }
     bool supportsScaling() const { return _supportsScaling; }
     bool canHaveMultipleFrontends() const { return _canHaveMultipleFrontends; }
+    bool external() const { return _external; }
 
 private:
     QString _id;
@@ -39,6 +41,7 @@ private:
     QString _icon;
     bool _supportsScaling;
     bool _canHaveMultipleFrontends;
+    bool _external;
 };
 
 class AppLoadLibrary : public QObject {
@@ -72,6 +75,16 @@ public:
         }
     }
 
+    Q_INVOKABLE bool launchExternal(const QString &appID) {
+        auto ref = appload::library::getExternals().find(appID);
+        if(ref != appload::library::getExternals().end()) {
+            ref->second->launch();
+            return true;
+        }
+
+        return false;
+    }
+
     void loadList() {
         clearApplications();
         for (const auto &entry : appload::library::getRef()) {
@@ -80,6 +93,16 @@ public:
                                                         entry.second->getIconPath(),
                                                         entry.second->supportsScaling(),
                                                         entry.second->canHaveMultipleFrontends(),
+                                                        false,
+                                                        this));
+        }
+        for (const auto &entry : appload::library::getExternals()) {
+            _applications.append(new AppLoadApplication(entry.first,
+                                                        entry.second->getAppName(),
+                                                        entry.second->getIconPath(),
+                                                        false,
+                                                        false,
+                                                        true,
                                                         this));
         }
     }

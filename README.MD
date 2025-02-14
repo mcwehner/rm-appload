@@ -78,6 +78,28 @@ Applications' backends have the ability to stay running in the background, and u
 
 The simplest way to write AppLoad applications is to use the inbuilt PC emulator. To load an application, place it in the `applications_root` folder. 
 
+## External applications
+
+AppLoad also supports starting external applications. To do that, create an application directory with the following contents:
+
+```
+application
+|
+|-> external.manifest.json (explained below)
+|
+|-> icon
+|
+|-> <other app-dependent files>
+```
+
+The `external.manifest.json` file has the following properties:
+
+- name: The name it's going to show up as in the launcher (required)
+- application: The executable's path (either absolute or relative to the app directory) (required)
+- workingDirectory: Self explanatory
+- environment: A dictionary of key-value string pairs of the process' environment variables
+- args: A list of strings - the arguments that will be passed to the executable
+
 ## Compiling AppLoad
 
 To compile AppLoad for on-PC testing, run `qmake6 .`, then `make` in the root of this repository. To build a xovi version, go into `xovi` and run `make.sh`.
