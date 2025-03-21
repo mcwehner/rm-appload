@@ -194,12 +194,16 @@ fn send_message(fd: i32, msg_type: u32, data: &str) -> Result<()> {
         return Err(Error::new(io::Error::last_os_error()));
     }
     status = unsafe {
-        libc::send(
-            fd,
-            byte_data.as_ptr() as *const _ as *const c_void,
-            header.length as usize,
-            0,
-        )
+        if header.length > 0 {
+            libc::send(
+                fd,
+                byte_data.as_ptr() as *const _ as *const c_void,
+                header.length as usize,
+                0,
+            )
+        } else {
+            0
+        }
     };
     if status == -1 {
         return Err(Error::new(io::Error::last_os_error()));

@@ -189,9 +189,11 @@ static void _listeningThread(char *sockPath, QString appID){
             CERR << "Violation: Message excedes MAX_MESSAGE_LENGTH. Connection will be terminated." << std::endl;
             break;
         }
-        status = read(clientFD, inboundBuffer, header.messageLength);
-        if(status < 1){
-            break;
+        if(header.messageLength > 0) {
+            status = read(clientFD, inboundBuffer, header.messageLength);
+            if(status < 1){
+                break;
+            }
         }
 
         QByteArray messageBytes((const char *) inboundBuffer, header.messageLength);
