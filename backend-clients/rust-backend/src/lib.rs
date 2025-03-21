@@ -5,7 +5,8 @@ use std::env::args;
 use std::io;
 use std::mem;
 use std::mem::transmute;
-use std::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[repr(C)]
 struct MessageHeader {
@@ -22,13 +23,13 @@ pub const MAX_PACKAGE_SIZE: usize = 10485760;
 pub const MSG_SYSTEM_TERMINATE: u32 = 0xFFFFFFFF;
 pub const MSG_SYSTEM_NEW_COORDINATOR: u32 = 0xFFFFFFFE;
 
-pub struct BackendReplier {
+pub struct BackendReplier<T: AppLoadBackend + ?Sized> {
     fd: i32,
     locked: bool,
-    internal_sender: mpsc::Sender<Message>
+    pub backend: Arc<Mutex<T>>
 }
 
-impl BackendReplier {
+impl <T: AppLoadBackend> BackendReplier<T> {
     pub fn send_message(&self, msg_type: u32, contents: &str) -> Result<()> {
         if self.locked {
             return Err(Error::msg(
@@ -38,13 +39,6 @@ impl BackendReplier {
         send_message(self.fd, msg_type, contents)
     }
 
-    pub fn send_internal(&self, msg_type: u32, contents: String) {
-        self.internal_sender.send(Message {
-            contents,
-            msg_type,
-        }).unwrap();
-    }
-
     fn lock(&mut self) {
         self.locked = true;
     }
@@ -52,18 +46,26 @@ impl BackendReplier {
 
 #[async_trait]
 pub trait AppLoadBackend {
-    async fn handle_message(&mut self, functionality: &BackendReplier, message: Message);
+    async fn handle_message(&mut self, functionality: &BackendReplier<Self>, message: Message);
 }
 
-pub struct AppLoad<'a> {
-    backend: &'a mut dyn AppLoadBackend,
+pub struct AppLoad<T: AppLoadBackend> {
+    backend: Arc<Mutex<T>>,
     fd: i32,
-    internal_channel: mpsc::Receiver<Message>,
-    internal_sender: mpsc::Sender<Message>,
 }
 
-impl<'a> AppLoad<'a> {
-    pub fn new(backend: &'a mut dyn AppLoadBackend) -> Result<Self> {
+impl <T: AppLoadBackend> Clone for BackendReplier<T> {
+    fn clone(&self) -> Self {
+        BackendReplier {
+            locked: false,
+            fd: self.fd,
+            backend: self.backend.clone()
+        }
+    }
+}
+
+impl <T: AppLoadBackend> AppLoad<T> {
+    pub fn new(backend: T) -> Result<Self> {
         let args: Vec<String> = args().collect();
         let fd = unsafe { socket(AF_UNIX, SOCK_SEQPACKET, 0) };
         if fd == -1 {
@@ -89,16 +91,14 @@ impl<'a> AppLoad<'a> {
             return Err(Error::new(io::Error::last_os_error()));
         }
 
-        let (s, r) = mpsc::channel();
-
-        Ok(Self { backend, fd, internal_channel: r, internal_sender: s })
+        Ok(Self { backend: Arc::new(Mutex::new(backend)), fd })
     }
 
-    pub fn create_replier(&self) -> BackendReplier {
+    pub fn create_replier(&self) -> BackendReplier<T> {
         BackendReplier {
             locked: false,
             fd: self.fd,
-            internal_sender: self.internal_sender.clone(),
+            backend: self.backend.clone()
         }
     }
 
@@ -146,7 +146,7 @@ impl<'a> AppLoad<'a> {
                 0 => String::new(),
                 len => String::from_utf8_lossy(&raw_buffer[0..len as usize]).into(),
             };
-            self.backend
+            self.backend.lock().await
                 .handle_message(
                     &replier,
                     Message {
@@ -155,14 +155,10 @@ impl<'a> AppLoad<'a> {
                     },
                 )
                 .await;
-
-            for entry in self.internal_channel.try_iter() {
-                self.backend.handle_message(&replier, entry).await;
-            }
         }
         replier.lock();
 
-        self.backend
+        self.backend.lock().await
             .handle_message(
                 &replier,
                 Message {
