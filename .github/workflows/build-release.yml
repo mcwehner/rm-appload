@@ -1,0 +1,122 @@
+name: Build with RMPP Toolchain and Upload Releases
+
+on:
+  push:
+    tags:
+      - '*'
+
+env: 
+  XOVI_REPO: ${GITHUB_WORKSPACE}/xovi-repo
+  XOVI_HOME: ${GITHUB_WORKSPACE}/xovi-repo
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: ["eeems/remarkable-toolchain:latest-rmpp", "eeems/remarkable-toolchain:latest-rm2"]
+        include:
+          - os: "eeems/remarkable-toolchain:latest-rmpp"
+            arch: aarch64-unknown-linux-gnu
+            artifact_name: appload-aarch64
+            dlfile_url: "https://github.com/asivery/dlfile/releases/latest/download/dlfile-aarch64"
+          - os: "eeems/remarkable-toolchain:latest-rm2"
+            arch: armv7-unknown-linux-gnueabihf
+            artifact_name: appload-arm32-testing
+            dlfile_url: "https://github.com/asivery/dlfile/releases/latest/download/dlfile-armv7hf"
+    runs-on: ubuntu-latest
+
+    container:
+        image: ${{ matrix.os }}
+
+    steps:
+        - name: Checkout Code
+          uses: actions/checkout@v3
+          with:
+            submodules: true
+
+        - name: Checkout XOVI repo
+          run: git clone https://github.com/asivery/xovi ${GITHUB_WORKSPACE}/xovi-repo
+
+        # Most of these dependencies are probably overkill.
+        # https://askubuntu.com/a/1460243
+        # https://forum.qt.io/topic/90472/unknown-module-s-in-qt-quickcontrols2/3
+        # https://stackoverflow.com/a/39397382
+        - name: Install QMake
+          run: >-
+            apt-get update
+
+            apt-get install -y
+            qt5-qmake 
+            qtbase5-dev 
+            qtbase5-dev-tools 
+            libqt5svg5-dev 
+            libqt5webenginewidgets5 
+            libqt5webchannel5-dev 
+            qtwebengine5-dev
+            qt6-base-dev
+            libgles2-mesa-dev
+            qtquickcontrols2-5-dev
+            qtdeclarative5-dev
+            qt6-declarative-dev
+            
+            qtchooser -install qt6 $(which qmake6)
+
+            export QT_SELECT=qt6
+
+        - name: Build Application
+          run: |
+            chmod a+x ./make.sh
+            ./make.sh
+          working-directory: ./xovi
+
+        # Copy ~/libappload.so to an empty folder to make publishing the zip easier
+        - name: Copy artifacts
+          run: |
+            mkdir ./${{ matrix.artifact_name }}
+            cp ./xovi/libappload.so ./${{ matrix.artifact_name }}/libappload.so
+
+        - name: Upload Build Artifact
+          uses: actions/upload-artifact@v4
+          with:
+            name: ${{ matrix.artifact_name }}.zip
+            path: ./${{ matrix.artifact_name }}
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+        - name: Download Build Artifacts
+          uses: actions/download-artifact@v4
+          with:
+            path: ./
+
+        - name: Create Release
+          uses: actions/create-release@v1
+          id: create_release_step
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          with:
+            draft: false
+            prerelease: false
+            release_name: ${{ github.event.release.tag_name }}
+            tag_name: ${{ github.ref }}
+
+        - name: Upload Release Assets
+          uses: actions/upload-release-asset@v1
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          with:
+            upload_url: ${{ steps.create_release_step.outputs.upload_url }}
+            asset_path: appload-aarch64.zip/libappload.so
+            asset_name: appload-aarch64.so
+            asset_content_type: application/octet-stream
+
+        - name: Upload Release Assets (ARM32)
+          uses: actions/upload-release-asset@v1
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          with:
+            upload_url: ${{ steps.create_release_step.outputs.upload_url }}
+            asset_path: appload-arm32-testing.zip/libappload.so
+            asset_name: appload-arm32-testing.so
+            asset_content_type: application/octet-stream

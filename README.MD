@@ -102,7 +102,12 @@ The `external.manifest.json` file has the following properties:
 
 ## Compiling AppLoad
 
+[xovi-repo]: https://github.com/asivery/xovi
+
+Before you can compile AppLoad, you need to checkout the [XOVI repository][xovi-repo] and set the `XOVI_HOME` environment variable to the repo's location.
+
 To compile AppLoad for on-PC testing, run `qmake6 .`, then `make` in the root of this repository. To build a xovi version, go into `xovi` and run `make.sh`.
 
+Alternatively, if you don't want to build, you can download the [latest release](https://github.com/asivery/rmpp-appload/releases/latest).  
 
 ## Happy Hacking!
