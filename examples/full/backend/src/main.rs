@@ -3,14 +3,14 @@ use async_trait::async_trait;
 
 #[tokio::main]
 async fn main() {
-    AppLoad::new(&mut MyBackend).unwrap().run().await.unwrap();
+    AppLoad::new(MyBackend).unwrap().run().await.unwrap();
 }
 
 struct MyBackend;
 
 #[async_trait]
 impl AppLoadBackend for MyBackend {
-    async fn handle_message(&mut self, functionality: &BackendReplier, message: Message) {
+    async fn handle_message(&mut self, functionality: &BackendReplier<MyBackend>, message: Message) {
         match message.msg_type {
             MSG_SYSTEM_NEW_COORDINATOR => {
                 println!("A frontend has connected")
