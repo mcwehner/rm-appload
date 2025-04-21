@@ -5,7 +5,7 @@ TEMPLATE = lib
 CONFIG += shared
 
 xoviextension.target = xovi.cpp
-xoviextension.commands = python3 $$(XOVI_HOME)/util/xovigen.py -o xovi.cpp -H xovi.h appload.xovi
+xoviextension.commands = python3 $$(XOVI_REPO)/util/xovigen.py -o xovi.cpp -H xovi.h appload.xovi
 xoviextension.depends = appload.xovi
 
 QMAKE_EXTRA_TARGETS += xoviextension

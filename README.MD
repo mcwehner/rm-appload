@@ -104,7 +104,7 @@ The `external.manifest.json` file has the following properties:
 
 [xovi-repo]: https://github.com/asivery/xovi
 
-Before you can compile AppLoad, you need to checkout the [XOVI repository][xovi-repo] and set the `XOVI_HOME` environment variable to the repo's location.
+Before you can compile AppLoad, you need to checkout the [XOVI repository][xovi-repo] and set the `XOVI_REPO` environment variable to the repo's location.
 
 To compile AppLoad for on-PC testing, run `qmake6 .`, then `make` in the root of this repository. To build a xovi version, go into `xovi` and run `make.sh`.
 

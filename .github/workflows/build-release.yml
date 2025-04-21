@@ -7,7 +7,6 @@ on:
 
 env: 
   XOVI_REPO: ${GITHUB_WORKSPACE}/xovi-repo
-  XOVI_HOME: ${GITHUB_WORKSPACE}/xovi-repo
 
 jobs:
   build:
