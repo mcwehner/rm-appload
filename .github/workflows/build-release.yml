@@ -71,11 +71,11 @@ jobs:
             ./make.sh
           working-directory: ./xovi
 
-        # Copy ~/libappload.so to an empty folder to make publishing the zip easier
+        # Copy ~/appload.so to an empty folder to make publishing the zip easier
         - name: Copy artifacts
           run: |
             mkdir ./${{ matrix.artifact_name }}
-            cp ./xovi/libappload.so ./${{ matrix.artifact_name }}/libappload.so
+            cp ./xovi/appload.so ./${{ matrix.artifact_name }}/appload.so
 
         - name: Upload Build Artifact
           uses: actions/upload-artifact@v4
@@ -109,7 +109,7 @@ jobs:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           with:
             upload_url: ${{ steps.create_release_step.outputs.upload_url }}
-            asset_path: appload-aarch64.zip/libappload.so
+            asset_path: appload-aarch64.zip/appload.so
             asset_name: appload-aarch64.so
             asset_content_type: application/octet-stream
 
@@ -119,6 +119,6 @@ jobs:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           with:
             upload_url: ${{ steps.create_release_step.outputs.upload_url }}
-            asset_path: appload-arm32-testing.zip/libappload.so
+            asset_path: appload-arm32-testing.zip/appload.so
             asset_name: appload-arm32-testing.so
             asset_content_type: application/octet-stream
