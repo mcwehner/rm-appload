@@ -11,7 +11,6 @@
 
 extern "C" {
     void _xovi_construct() {
-        Environment->requireExtension("qt-resource-rebuilder", 0, 2, 0);
         loadIcon();
         qmlRegisterType<AppLoad>("net.asivery.AppLoad", 1, 0, "AppLoad");
         qmlRegisterType<AppLoadCoordinator>("net.asivery.AppLoad", 1, 0, "AppLoadCoordinator");
