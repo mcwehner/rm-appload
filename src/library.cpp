@@ -1,9 +1,7 @@
 #include "library.h"
 #include "log.h"
-#include <QProcess>
 #include <QDebug>
 #include <QDir>
-#include <QFileInfo>
 
 static QString randString(int len)
 {
@@ -14,93 +12,6 @@ static QString randString(int len)
 
     return str;
 }
-
-appload::library::ExternalApplication::ExternalApplication(QString root): root(root) {
-    parseManifest();
-}
-
-void appload::library::ExternalApplication::parseManifest() {
-    QString filePath = root + "/external.manifest.json";
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        CERR << "Unable to open file: " << filePath.toStdString() << std::endl;
-        return;
-    }
-    QByteArray jsonData = file.readAll();
-    file.close();
-
-    QJsonDocument doc = QJsonDocument::fromJson(jsonData);
-    if (doc.isNull() || !doc.isObject()) {
-        CERR << "Invalid JSON data" << std::endl;
-        return;
-    }
-
-    QJsonObject jsonObject = doc.object();
-
-    // Required:
-    appName = jsonObject.value("name").toString();
-    execPath = jsonObject.value("application").toString();
-
-    // Optional:
-    workingDirectory = jsonObject.value("workingDirectory").toString(root);
-    args = jsonObject.value("args").toVariant().toStringList();
-    QJsonObject env = jsonObject.value("environment").toObject();
-    for(auto entry = env.begin(); entry != env.end(); entry++) {
-        environment[entry.key()] = entry.value().toString();
-    }
-
-    valid = !appName.isEmpty() && !execPath.isEmpty();
-    if(valid) {
-        if(!execPath.startsWith("/")) {
-            execPath = "./" + execPath;
-        }
-    }
-}
-
-void appload::library::ExternalApplication::launch() const {
-    QDEBUG << "Starting external binary" << execPath;
-
-    QProcess *process = new QProcess();
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    env.remove("LD_PRELOAD");
-    for(const auto &entry : environment) {
-        env.insert(entry.first, entry.second);
-    }
-    process->setProcessEnvironment(env);
-    process->setWorkingDirectory(workingDirectory);
-    process->setProcessChannelMode(QProcess::ForwardedChannels);
-    process->start(execPath, args);
-
-    if (!process->waitForStarted()) {
-        qWarning() << "Failed to start process:" << process->errorString();
-        delete process;
-        return;
-    }
-
-    QString appPath = execPath;
-    QObject::connect(process, &QProcess::errorOccurred, [appPath, process](QProcess::ProcessError error) {
-        qWarning() << "Process error for" << appPath << ":" << error;
-        process->deleteLater();
-    });
-
-    QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [appPath, process](int exitCode, QProcess::ExitStatus status) {
-        QDEBUG << "Process for" << appPath << "finished with exit code" << exitCode << "and status" << status;
-        process->deleteLater();
-    });
-}
-
-QString appload::library::ExternalApplication::getIconPath() const {
-    auto path = QFileInfo(root + "/icon.png");
-    if(path.exists()) {
-        return "file://" + path.canonicalFilePath();
-    }
-    return "qrc:/appload/appload";
-}
-
-QString appload::library::ExternalApplication::getAppName() const {
-    return appName;
-}
-
 
 appload::library::LoadedApplication::LoadedApplication(QString root) : root(root){
     parseManifest();
@@ -150,7 +61,7 @@ QString appload::library::LoadedApplication::getIconPath() const {
     if(path.exists()) {
         return "file://" + path.canonicalFilePath();
     }
-    return "qrc:/appload/appload";
+    return "qrc:/appload/icons/appload";
 }
 
 QString appload::library::LoadedApplication::getAppName() const {
@@ -183,6 +94,10 @@ bool appload::library::LoadedApplication::supportsScaling() const {
 
 bool appload::library::LoadedApplication::canHaveMultipleFrontends() const {
     return _canHaveMultipleFrontends;
+}
+
+bool appload::library::LoadedApplication::disablesApploadGestures() const {
+    return _disablesApploadGestures;
 }
 
 void appload::library::LoadedApplication::loadFrontend() {
@@ -225,6 +140,7 @@ void appload::library::LoadedApplication::parseManifest(){
     loadsBackend = jsonObject.value("loadsBackend").toBool();
     _supportsScaling = jsonObject.value("supportsScaling").toBool(false);
     _canHaveMultipleFrontends = jsonObject.value("canHaveMultipleFrontends").toBool(true);
+    _disablesApploadGestures = jsonObject.value("disablesApploadGestures").toBool(true);
     internalIdentifier = randString(10);
 
     valid = !appName.isEmpty() && !appID.isEmpty() && !qmlEntrypoint.isEmpty();

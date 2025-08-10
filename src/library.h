@@ -37,7 +37,8 @@ namespace appload::library {
         ExternalApplication(QString root);
         QString getIconPath() const;
         QString getAppName() const;
-        void launch() const;
+        qint64 launch(int qtfbKey) const;
+        bool isQTFB() const;
 
         bool valid = false;
 
@@ -50,6 +51,7 @@ namespace appload::library {
         QString workingDirectory;
         QStringList args;
         std::map<QString, QString> environment;
+        bool _isQTFB;
 
         void parseManifest();
     };
@@ -72,6 +74,7 @@ namespace appload::library {
         bool isFrontendRunning() const;
         bool supportsScaling() const;
         bool canHaveMultipleFrontends() const;
+        bool disablesApploadGestures() const;
         bool valid = false;
         bool currentlyUnloading = false;
         int loadedFrontendInstanceCount = 0;
@@ -83,6 +86,7 @@ namespace appload::library {
         bool loadsBackend;
         bool _supportsScaling;
         bool _canHaveMultipleFrontends;
+        bool _disablesApploadGestures;
         bool frontendLoaded = false;
         void parseManifest();
     };
@@ -90,6 +94,7 @@ namespace appload::library {
     static std::map<QString, LoadedApplication*> applications;
     static std::map<QString, ExternalApplication*> externalApplications;
     int loadApplications();
+    void terminateExternal(qint64 pid);
     appload::library::LoadedApplication *get(const QString &id);
     const std::map<QString, appload::library::LoadedApplication*> &getRef();
     const std::map<QString, appload::library::ExternalApplication*> &getExternals();
