@@ -1,4 +1,5 @@
 #include <map>
+#include <vector>
 #include <QDebug>
 #include <QMetaObject>
 #include <QPointer>
@@ -21,11 +22,8 @@
 #define RESP_OK 0
 
 namespace qtfb::management {
-    class ClientConnection {
+    class ClientBackend {
     public:
-        int clientFD;
-        int fbKey = -1;
-
         int shmFD = -1;
         int shmKey = -1;
         unsigned char *shm = NULL;
@@ -33,13 +31,25 @@ namespace qtfb::management {
         QImage *image = NULL;
         int shmType = -1;
         size_t shmSize = 0;
+
+        std::vector<class ClientConnection *> connections;
+
+        ~ClientBackend();
+    };
+
+    class ClientConnection {
+    public:
+        int clientFD;
+        int fbKey = -1;
     };
 
     static std::map<FBKey, QPointer<FBController>> framebuffers;
-    static std::map<FBKey, ClientConnection*> connections;
+    static std::map<FBKey, ClientBackend*> connections;
 
     void registerController(FBKey key, QPointer<FBController> controller);
     void unregisterController(FBKey key);
     bool isControllerAssociated(FBKey key);
+
+    void forwardUserInput(qtfb::FBKey key, struct qtfb::UserInputContents *input);
     void start();
 }

@@ -1,6 +1,8 @@
 #include "fbmanagement.h"
 #include "log.h"
+#include "common.h"
 #include <iostream>
+#include <mutex>
 /*
 My implementation of the shared QT-framebuffer idea works by:
 - Having all the clients communicate with the server via a UNIX socket, which governs
@@ -18,6 +20,9 @@ My implementation of the shared QT-framebuffer idea works by:
   detach everything.
 */
 
+static std::mutex globalBackendsListMutex;
+#define SYNCHRONIZE const std::lock_guard<std::mutex> __lock(globalBackendsListMutex)
+
 void tryToMatchUp(qtfb::FBKey key){
     // Try to find the client in the clients' list
     if(qtfb::management::connections.find(key) == qtfb::management::connections.end()) {
@@ -27,7 +32,7 @@ void tryToMatchUp(qtfb::FBKey key){
         return; // Framebuffer not found
     }
     // Both of them found! Assign one to another.
-    qtfb::management::ClientConnection *connection = qtfb::management::connections[key];
+    qtfb::management::ClientBackend *connection = qtfb::management::connections[key];
     QPointer<FBController> controller = qtfb::management::framebuffers[key];
     if(connection->shm == NULL || controller.isNull()){
         CERR << "Invalid state: Cannot have an partially-associated connection in the connections map!" << std::endl;
@@ -39,9 +44,10 @@ void tryToMatchUp(qtfb::FBKey key){
 
 #define SEND(message) send(connection->clientFD, &message, sizeof(message), 0)
 
-void qtfb::management::registerController(FBKey key, QPointer<FBController> controller){
+void qtfb::management::registerController(FBKey key, QPointer<FBController> controller) {
+    if(key == -1) return;
     if(qtfb::management::framebuffers.find(key) != qtfb::management::framebuffers.end()) {
-        CERR << "Violation: Tried to attach to an already defined framebuffer. Please change the framebufferID!" << std::endl;
+        CERR << "Violation: Tried to attach to an already defined framebuffer (" << key << "). Please change the framebufferID!" << std::endl;
         return;
     }
 
@@ -63,7 +69,7 @@ void qtfb::management::unregisterController(FBKey key) {
     CERR << "Unregistered framebuffer controller ID: " << key << std::endl;
 }
 
-static bool createSHM(qtfb::management::ClientConnection *connection, int shmType, int width, int height) {
+static bool createSHM(qtfb::management::ClientBackend *connection, int shmType, int width, int height) {
     size_t shmSize;
     QImage::Format format;
 
@@ -122,7 +128,7 @@ static bool createSHM(qtfb::management::ClientConnection *connection, int shmTyp
     return true;
 }
 
-static bool createDefaultSHM(qtfb::management::ClientConnection *connection, int shmType) {
+static bool createDefaultSHM(qtfb::management::ClientBackend *connection, int shmType) {
     switch(shmType) {
         case FBFMT_RM2FB:
             return createSHM(connection, shmType, RM2_WIDTH, RM2_HEIGHT);
@@ -136,33 +142,62 @@ static bool createDefaultSHM(qtfb::management::ClientConnection *connection, int
 }
 
 static int handleInitialize(qtfb::management::ClientConnection *connection, qtfb::ClientMessage *inbound, int messageType) {
-    if(qtfb::management::connections.find(inbound->init.framebufferKey) != qtfb::management::connections.end()) {
-        CERR << "Violation: Tried to connect to an already used framebuffer." << std::endl;
-        return RESP_ERR;
-    }
+    SYNCHRONIZE;
     connection->fbKey = inbound->init.framebufferKey;
+    if(qtfb::management::connections.find(inbound->init.framebufferKey) != qtfb::management::connections.end()) {
+        // If there already exists a backend like that, check if the parameters are the same
+        // If they are, this is safe.
+        qtfb::management::ClientBackend *backend = qtfb::management::connections[inbound->init.framebufferKey];
+        switch(messageType) {
+            case MESSAGE_CUSTOM_INITIALIZE:
+                if(backend->shmType != inbound->customInit.framebufferType || backend->image->width() != inbound->customInit.width || backend->image->height() != inbound->customInit.height) {
+                    return RESP_ERR;
+                }
+                break;
+            case MESSAGE_INITIALIZE:
+                if(backend->shmType != inbound->init.framebufferType) {
+                    return RESP_ERR;
+                }
+                break;
+            default: return RESP_ERR;
+        }
+        // It's safe.
+        qtfb::ServerMessage outbound = {
+            .type = MESSAGE_INITIALIZE,
+            .init = {
+                .shmKeyDefined = backend->shmKey,
+                .shmSize = backend->shmSize,
+            },
+        };
+        SEND(outbound);
+        backend->connections.push_back(connection);
+        return RESP_OK;
+    }
+    qtfb::management::ClientBackend *newBackend = new qtfb::management::ClientBackend();
     bool result = false;
     switch(messageType) {
         case MESSAGE_CUSTOM_INITIALIZE:
-            result = createSHM(connection, inbound->customInit.framebufferType, inbound->customInit.width, inbound->customInit.height);
+            result = createSHM(newBackend, inbound->customInit.framebufferType, inbound->customInit.width, inbound->customInit.height);
             break;
         case MESSAGE_INITIALIZE:
-            result = createDefaultSHM(connection, inbound->init.framebufferType);
+            result = createDefaultSHM(newBackend, inbound->init.framebufferType);
             break;
     }
     if(!result) {
+        delete newBackend;
         return RESP_ERR;
     }
     // Send the SHM key over to the client
     qtfb::ServerMessage outbound = {
         .type = MESSAGE_INITIALIZE,
         .init = {
-            .shmKeyDefined = connection->shmKey,
-            .shmSize = connection->shmSize,
+            .shmKeyDefined = newBackend->shmKey,
+            .shmSize = newBackend->shmSize,
         },
     };
     SEND(outbound);
-    qtfb::management::connections[connection->fbKey] = connection;
+    newBackend->connections.push_back(connection);
+    qtfb::management::connections[connection->fbKey] = newBackend;
     tryToMatchUp(connection->fbKey);
     return RESP_OK;
 }
@@ -209,7 +244,7 @@ static int handleUpdateRegion(qtfb::management::ClientConnection *connection, qt
     return RESP_OK;
 }
 
-static void managementClientThread(int incomingFD){
+static void managementClientThread(int incomingFD) {
     qtfb::management::ClientConnection connection;
     connection.clientFD = incomingFD;
 
@@ -226,6 +261,9 @@ static void managementClientThread(int incomingFD){
             case MESSAGE_UPDATE:
                 status = handleUpdateRegion(&connection, &inboundMessage);
                 break;
+            case MESSAGE_TERMINATE:
+                CERR << "The client requested closing the connection." << std::endl;
+                goto close;
             default:
                 CERR << "Client has tried to send a message with an invalid type: " << inboundMessage.type << std::endl;
                 goto close;
@@ -235,15 +273,27 @@ static void managementClientThread(int incomingFD){
             goto close;
         }
     }
-    close:
+    close: SYNCHRONIZE;
+    qtfb::management::ClientBackend *backendToKill = NULL;
     if(connection.fbKey != -1) {
         auto position = qtfb::management::connections.find(connection.fbKey);
         if(position != qtfb::management::connections.end()){
-            qtfb::management::connections.erase(position);
+            // There can be more than one backend. Was this the last?
+            qtfb::management::ClientBackend *backend = qtfb::management::connections[connection.fbKey];
+            auto position2 = std::find(backend->connections.begin(), backend->connections.end(), &connection);
+            if(position2 != backend->connections.end()) {
+                backend->connections.erase(position2);
+            } else {
+                CERR << "Cannot erase connection in list!" << std::endl;
+            }
+            if(backend->connections.empty()) {
+                backendToKill = backend; // Delay destruction of the backend to after the (potential) object had dissotiated.
+                qtfb::management::connections.erase(position);
+            }
         }
     }
 
-    if(connection.fbKey != -1){
+    if(connection.fbKey != -1 && backendToKill){
         if(qtfb::management::framebuffers.find(connection.fbKey) != qtfb::management::framebuffers.end()) {
             // The client that died was associated with a framebuffer!
             QPointer<FBController> controller = qtfb::management::framebuffers[connection.fbKey];
@@ -265,19 +315,23 @@ static void managementClientThread(int incomingFD){
 
     continueDeletion:
 
-    delete connection.image;
-    if(connection.shm != NULL) {
-        munmap(connection.shm, connection.shmSize);
-    }
-    if(connection.translationShm != NULL){
-        delete[] connection.translationShm;
-    }
-    if(connection.shmKey != -1) {
-        FORMAT_SHM(shmName, connection.shmKey);
-        shm_unlink(shmName);
-    }
     CERR << "Closing client socket " << incomingFD << std::endl;
     close(incomingFD);
+    if(backendToKill != NULL) delete backendToKill;
+}
+
+qtfb::management::ClientBackend::~ClientBackend() {
+    delete image;
+    if(shm != NULL) {
+        munmap(shm, shmSize);
+    }
+    if(translationShm != NULL){
+        delete[] translationShm;
+    }
+    if(shmKey != -1) {
+        FORMAT_SHM(shmName, shmKey);
+        shm_unlink(shmName);
+    }
 }
 
 static void managementMainThread(){
@@ -316,4 +370,19 @@ void qtfb::management::start(){
     srand(time(NULL));
     std::thread thread(managementMainThread);
     thread.detach();
+}
+
+void qtfb::management::forwardUserInput(qtfb::FBKey key, struct qtfb::UserInputContents *input) {
+    SYNCHRONIZE;
+    auto position = qtfb::management::connections.find(key);
+    if(position != qtfb::management::connections.end()){
+        qtfb::management::ClientBackend *backend = position->second;
+        struct ServerMessage outbound = {
+            .type = MESSAGE_USERINPUT,
+            .userInput = *input
+        };
+        for(qtfb::management::ClientConnection *connection : backend->connections) {
+            SEND(outbound);
+        }
+    }
 }

@@ -13,7 +13,8 @@
 #define MESSAGE_INITIALIZE 0
 #define MESSAGE_UPDATE 1
 #define MESSAGE_CUSTOM_INITIALIZE 2
-#define MESSAGE_USERINPUT 3
+#define MESSAGE_TERMINATE 3
+#define MESSAGE_USERINPUT 4
 
 #define FBFMT_RM2FB 0
 #define FBFMT_RMPP_RGB888 1
@@ -23,9 +24,23 @@
 #define UPDATE_ALL 0
 #define UPDATE_PARTIAL 1
 
-namespace qtfb {
+#define INPUT_TOUCH_PRESS 0x10
+#define INPUT_TOUCH_RELEASE 0x11
+#define INPUT_TOUCH_UPDATE 0x12
 
-    typedef unsigned int FBKey;
+#define INPUT_PEN_PRESS 0x20
+#define INPUT_PEN_RELEASE 0x21
+#define INPUT_PEN_UPDATE 0x22
+
+#define INPUT_BTN_PRESS 0x30
+#define INPUT_BTN_RELEASE 0x31
+
+#define INPUT_BTN_X_LEFT 0
+#define INPUT_BTN_X_HOME 1
+#define INPUT_BTN_X_RIGHT 2
+
+namespace qtfb {
+    typedef int FBKey;
 
     struct InitMessageContents {
         FBKey framebufferKey;
@@ -50,7 +65,9 @@ namespace qtfb {
     };
 
     struct UserInputContents {
-
+        int inputType;
+        int devId;
+        int x, y, d;
     };
 
     struct ClientMessage {
@@ -59,11 +76,15 @@ namespace qtfb {
             struct InitMessageContents init;
             struct UpdateRegionMessageContents update;
             struct CustomInitMessageContents customInit;
+            // struct TerminateMessageContents terminate; - Terminate does not send any data.
         };
     };
 
     struct ServerMessage {
         uint8_t type;
-        struct InitMessageResponseContents init;
+        union {
+            struct InitMessageResponseContents init;
+            struct UserInputContents userInput;
+        };
     };
 }
