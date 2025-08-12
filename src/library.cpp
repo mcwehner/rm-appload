@@ -155,15 +155,23 @@ static std::mutex loadingMutex;
 
 int appload::library::loadApplications() {
     loadingMutex.lock();
+    // Make sure all apps are unloaded:
     for(auto entry : appload::library::applications) {
-        if(!entry.second->isFrontendRunning()) {
-            delete entry.second;
-            appload::library::applications.erase(entry.first);
+        if(entry.second->isFrontendRunning()) {
+            CERR << "Cannot reload apps - some still running!" << std::endl;
+            loadingMutex.unlock();
+            return 0;
         }
+    }
+
+    for(auto entry : appload::library::applications) {
+        delete entry.second;
     }
     for(auto entry : appload::library::externalApplications) {
         delete entry.second;
     }
+    appload::library::externalApplications.clear();
+    appload::library::applications.clear();
 
     const char *directoryPath = APPLICATION_DIRECTORY_ROOT;
     DIR *dir;
@@ -221,7 +229,6 @@ int appload::library::loadApplications() {
         }
     }
 
-    // Close the directory
     closedir(dir);
     loadingMutex.unlock();
     return loadedCount;
