@@ -12,15 +12,15 @@ jobs:
   build:
     strategy:
       matrix:
-        os: ["eeems/remarkable-toolchain:latest-rmpp", "eeems/remarkable-toolchain:latest-rm2"]
+        os: ["eeems/remarkable-toolchain:latest-rmpp", "eeems/remarkable-toolchain:latest-rm1"]
         include:
           - os: "eeems/remarkable-toolchain:latest-rmpp"
             arch: aarch64-unknown-linux-gnu
             artifact_name: appload-aarch64
             dlfile_url: "https://github.com/asivery/dlfile/releases/latest/download/dlfile-aarch64"
-          - os: "eeems/remarkable-toolchain:latest-rm2"
+          - os: "eeems/remarkable-toolchain:latest-rm1"
             arch: armv7-unknown-linux-gnueabihf
-            artifact_name: appload-arm32-testing
+            artifact_name: appload-arm32
             dlfile_url: "https://github.com/asivery/dlfile/releases/latest/download/dlfile-armv7hf"
     runs-on: ubuntu-latest
 
@@ -57,7 +57,7 @@ jobs:
             qtquickcontrols2-5-dev
             qtdeclarative5-dev
             qt6-declarative-dev
-            
+
             qtchooser -install qt6 $(which qmake6)
 
             export QT_SELECT=qt6
@@ -71,11 +71,21 @@ jobs:
             ./make.sh
           working-directory: ./xovi
 
+        - name: Build Shim
+          run: |
+            . /opt/codex/*/*/environment-setup-*
+            mkdir build
+            cd build
+            cmake ..
+            make
+          working-directory: ./shim
+
         # Copy ~/appload.so to an empty folder to make publishing the zip easier
         - name: Copy artifacts
           run: |
             mkdir ./${{ matrix.artifact_name }}
             cp ./xovi/appload.so ./${{ matrix.artifact_name }}/appload.so
+            cp ./shim/build/qtfb-shim.so ./shim/build/qtfb-shim-32bit.so ./${{ matrix.artifact_name }}/
 
         - name: Upload Build Artifact
           uses: actions/upload-artifact@v4
