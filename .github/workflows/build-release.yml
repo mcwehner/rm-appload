@@ -57,6 +57,7 @@ jobs:
             qtquickcontrols2-5-dev
             qtdeclarative5-dev
             qt6-declarative-dev
+            zip
 
             qtchooser -install qt6 $(which qmake6)
 
@@ -83,15 +84,16 @@ jobs:
         # Copy ~/appload.so to an empty folder to make publishing the zip easier
         - name: Copy artifacts
           run: |
-            mkdir ./${{ matrix.artifact_name }}
-            cp ./xovi/appload.so ./${{ matrix.artifact_name }}/appload.so
-            cp ./shim/build/qtfb-shim.so ./shim/build/qtfb-shim-32bit.so ./${{ matrix.artifact_name }}/
+            mkdir ./result
+            cp ./xovi/appload.so ./shim/build/qtfb-shim.so ./shim/build/qtfb-shim-32bit.so ./result/
+            cd result
+            zip ${{ matrix.artifact_name }}.zip *
 
         - name: Upload Build Artifact
           uses: actions/upload-artifact@v4
           with:
             name: ${{ matrix.artifact_name }}.zip
-            path: ./${{ matrix.artifact_name }}
+            path: ./result
 
   release:
     runs-on: ubuntu-latest
@@ -119,8 +121,8 @@ jobs:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           with:
             upload_url: ${{ steps.create_release_step.outputs.upload_url }}
-            asset_path: appload-aarch64.zip/appload.so
-            asset_name: appload-aarch64.so
+            asset_path: appload-aarch64.zip/appload-aarch64.zip
+            asset_name: appload-aarch64.zip
             asset_content_type: application/octet-stream
 
         - name: Upload Release Assets (ARM32)
@@ -129,6 +131,6 @@ jobs:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           with:
             upload_url: ${{ steps.create_release_step.outputs.upload_url }}
-            asset_path: appload-arm32-testing.zip/appload.so
-            asset_name: appload-arm32-testing.so
+            asset_path: appload-arm32.zip/appload-arm32.zip
+            asset_name: appload-arm32.zip
             asset_content_type: application/octet-stream
