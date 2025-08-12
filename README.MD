@@ -99,6 +99,7 @@ The `external.manifest.json` file has the following properties:
 - workingDirectory: Self explanatory
 - environment: A dictionary of key-value string pairs of the process' environment variables
 - args: A list of strings - the arguments that will be passed to the executable
+- qtfb: Boolean - whether or not to allocate a QTFB framebuffer for the application. The framebuffer's ID will be passed as the envvar `QTFB_KEY` to the application
 
 ## Compiling AppLoad
 
