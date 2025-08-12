@@ -1,0 +1,8 @@
+{
+    "name": "Frontend-only",
+    "loadsBackend": false,
+    "entry": "/ui/example.qml",
+    "id": "frontend-only-example",
+    "supportsScaling": true,
+    "canHaveMultipleFrontends": true
+}

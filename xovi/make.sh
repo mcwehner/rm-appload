@@ -1,4 +1,10 @@
-cp ../log.h ../management.h ../protocol.h ../management.cpp ../AppLoad.cpp ../AppLoadCoordinator.cpp ../library.cpp ../AppLoad.h ../AppLoadCoordinator.h ../library.h ../AppLibrary.h .
-# Do not copy main
+cp -rv template/* .
+rm -rf temporary
+mkdir -p temporary
+
+cp -rv ../src temporary
+rcc --no-compress -g cpp ../resources/resources.qrc | sed -n '/#ifdef/q;p' > temporary/resources.cpp
+cp main.cpp config.h temporary/src/
+
 qmake6 .
 make
