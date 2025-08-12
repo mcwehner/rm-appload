@@ -4,9 +4,31 @@
 #include <QFileInfo>
 #include <signal.h>
 
+#include "AppLibrary.h"
+
 appload::library::ExternalApplication::ExternalApplication(QString root): root(root) {
     parseManifest();
 }
+
+static std::vector<AppLoadLibrary*> globalLibraryHandles;
+
+static void sendPidDiedMessage(qint64 pid){
+    for(AppLoadLibrary *ptr : globalLibraryHandles){
+        emit ptr->pidDied(pid);
+    }
+}
+
+void appload::library::addGlobalLibraryHandle(AppLoadLibrary *ptr) {
+    globalLibraryHandles.push_back(ptr);
+}
+void appload::library::removeGlobalLibraryHandle(AppLoadLibrary *ptr) {
+    auto pos = std::find(globalLibraryHandles.begin(), globalLibraryHandles.end(), ptr);
+    if(pos != globalLibraryHandles.end()) {
+        globalLibraryHandles.erase(pos);
+    }
+}
+
+
 
 void appload::library::ExternalApplication::parseManifest() {
     QString filePath = root + "/external.manifest.json";
@@ -76,12 +98,14 @@ qint64 appload::library::ExternalApplication::launch(int qtfbKey) const {
         process->deleteLater();
     });
 
-    QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [appPath, process](int exitCode, QProcess::ExitStatus status) {
+    qint64 pid = process->processId();
+    QObject::connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), [pid, appPath, process](int exitCode, QProcess::ExitStatus status) {
         QDEBUG << "Process for" << appPath << "finished with exit code" << exitCode << "and status" << status;
+        sendPidDiedMessage(pid);
         process->deleteLater();
     });
 
-    return process->processId();
+    return pid;
 }
 
 QString appload::library::ExternalApplication::getIconPath() const {
@@ -102,4 +126,5 @@ bool appload::library::ExternalApplication::isQTFB() const {
 
 void appload::library::terminateExternal(qint64 pid) {
     kill(pid, SIGTERM);
+    sendPidDiedMessage(pid);
 }

@@ -54,7 +54,8 @@ class AppLoadLibrary : public QObject {
     Q_PROPERTY(QQmlListProperty<AppLoadApplication> applications READ applications NOTIFY applicationsChanged)
 
 public:
-    explicit AppLoadLibrary(QObject *parent = nullptr) : QObject(parent) { }
+    explicit AppLoadLibrary(QObject *parent = nullptr) : QObject(parent) { appload::library::addGlobalLibraryHandle(this); }
+    ~AppLoadLibrary() { appload::library::removeGlobalLibraryHandle(this); }
 
     QQmlListProperty<AppLoadApplication> applications() {
         loadList();
@@ -80,14 +81,17 @@ public:
         }
     }
 
-    Q_INVOKABLE bool launchExternal(const QString &appID) {
+    Q_INVOKABLE qint64 launchExternal(const QString &appID, int qtfbKey) {
         auto ref = appload::library::getExternals().find(appID);
         if(ref != appload::library::getExternals().end()) {
-            ref->second->launch();
-            return true;
+            return ref->second->launch(qtfbKey);
         }
 
-        return false;
+        return -1;
+    }
+
+    Q_INVOKABLE void terminateExternal(qint64 pid) {
+        appload::library::terminateExternal(pid);
     }
 
     void loadList() {
@@ -98,7 +102,7 @@ public:
                                                         entry.second->getIconPath(),
                                                         entry.second->supportsScaling(),
                                                         entry.second->canHaveMultipleFrontends(),
-                                                        false,
+                                                        INTERNAL,
                                                         this));
         }
         for (const auto &entry : appload::library::getExternals()) {
@@ -106,14 +110,15 @@ public:
                                                         entry.second->getAppName(),
                                                         entry.second->getIconPath(),
                                                         false,
-                                                        false,
                                                         true,
+                                                        entry.second->isQTFB() ? EXTERNAL_QTFB : EXTERNAL_NOGUI,
                                                         this));
         }
     }
 
 signals:
     void applicationsChanged();
+    void pidDied(qint64 pid);
 
 private:
     static void appendApplication(QQmlListProperty<AppLoadApplication> *list, AppLoadApplication *app) {

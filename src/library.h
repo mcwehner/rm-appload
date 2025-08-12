@@ -31,6 +31,8 @@
 #include <unistd.h>
 #include "config.h"
 
+class AppLoadLibrary;
+
 namespace appload::library {
     class ExternalApplication {
         public:
@@ -95,6 +97,8 @@ namespace appload::library {
     static std::map<QString, ExternalApplication*> externalApplications;
     int loadApplications();
     void terminateExternal(qint64 pid);
+    void addGlobalLibraryHandle(AppLoadLibrary *ptr);
+    void removeGlobalLibraryHandle(AppLoadLibrary *ptr);
     appload::library::LoadedApplication *get(const QString &id);
     const std::map<QString, appload::library::LoadedApplication*> &getRef();
     const std::map<QString, appload::library::ExternalApplication*> &getExternals();
