@@ -24,6 +24,9 @@
 #define RM1_BUTTONS "/dev/input/event1"
 #define RM1_DIGITIZER "/dev/input/event0"
 
+#define RMPP_TOUCHSCREEN "/dev/input/event3"
+#define RMPP_DIGITIZER "/dev/input/event2"
+
 #define RM1_MAX_DIGI_X 20967
 #define RM1_MAX_DIGI_Y 15725
 #define RMPP_MAX_DIGI_X 11180
@@ -42,9 +45,8 @@
 #define RMPP_MAX_TOUCH_Y 2832
 #define RMPP_MAX_PRESSURE 255
 
-const char *UNBOUND_INPUTS[] = { "/dev/input/event3", };
-
 extern qtfb::ClientConnection *clientConnection;
+extern int shimInputType;
 
 struct TouchSlotState {
     int x, y;
@@ -111,6 +113,37 @@ static void pollInputUpdates() {
         if(clientConnection->pollServerPacket(message) && message.type == MESSAGE_USERINPUT) {
             // Did we get a packet?
             char state_a;
+
+            int xTranslate, yTranslate, dTranslate;
+            switch(shimInputType) {
+                case SHIM_INPUT_RM1:
+                    switch(message.userInput.inputType & 0xF0) {
+                        case INPUT_TOUCH_PRESS:
+                            xTranslate = RM1_MAX_TOUCH_X - ((message.userInput.x * RM1_MAX_TOUCH_X) / (int) clientConnection->width());
+                            yTranslate = RM1_MAX_TOUCH_Y - ((message.userInput.y * RM1_MAX_TOUCH_Y) / (int) clientConnection->height());
+                            break;
+                        case INPUT_PEN_PRESS:
+                            xTranslate = RM1_MAX_DIGI_X - ((message.userInput.y * RM1_MAX_DIGI_X) / clientConnection->height());
+                            yTranslate = (message.userInput.x * RM1_MAX_DIGI_Y) / clientConnection->width();
+                            dTranslate = (message.userInput.d * 4096) / 100;
+                            break;
+                    }
+                    break;
+                case SHIM_INPUT_RMPP:
+                    switch(message.userInput.inputType & 0xF0) {
+                        case INPUT_TOUCH_PRESS:
+                            xTranslate = ((message.userInput.x * RMPP_MAX_TOUCH_X) / (int) clientConnection->width());
+                            yTranslate = ((message.userInput.y * RMPP_MAX_TOUCH_Y) / (int) clientConnection->height());
+                            break;
+                        case INPUT_PEN_PRESS:
+                            xTranslate = (message.userInput.x * RMPP_MAX_DIGI_X) / clientConnection->width();
+                            yTranslate = (message.userInput.y * RMPP_MAX_DIGI_Y) / clientConnection->height();
+                            dTranslate = (message.userInput.d * 255) / 100;
+                            break;
+                    }
+                    break;
+            }
+
             CERR << "[QTFB SHIM INPUT]: " << (int) message.userInput.inputType << ", " << message.userInput.x << ", " << message.userInput.y << std::endl;
             switch(message.userInput.inputType) {
                 case INPUT_TOUCH_PRESS:
@@ -122,8 +155,8 @@ static void pollInputUpdates() {
                     pushToAll(QUEUE_TOUCH, evt(EV_ABS, ABS_MT_TRACKING_ID, -1));
                     sendpos:
                     if(state_a != 0) {
-                        pushToAll(QUEUE_TOUCH, evt(EV_ABS, ABS_MT_POSITION_X, RM1_MAX_TOUCH_X - ((message.userInput.x * RM1_MAX_TOUCH_X) / (int) clientConnection->width())));
-                        pushToAll(QUEUE_TOUCH, evt(EV_ABS, ABS_MT_POSITION_Y, RM1_MAX_TOUCH_Y - ((message.userInput.y * RM1_MAX_TOUCH_Y) / (int) clientConnection->height())));
+                        pushToAll(QUEUE_TOUCH, evt(EV_ABS, ABS_MT_POSITION_X, xTranslate));
+                        pushToAll(QUEUE_TOUCH, evt(EV_ABS, ABS_MT_POSITION_Y, yTranslate));
                     }
                     if(state_a == 1 || state_a == 0) {
                         pushToAll(QUEUE_TOUCH, evt(EV_KEY, BTN_TOUCH, state_a));
@@ -146,9 +179,9 @@ static void pollInputUpdates() {
                 case INPUT_PEN_UPDATE:
                     pushToAll(QUEUE_PEN, evt(EV_KEY, BTN_TOOL_PEN, 1));
                 pen_fall:
-                    pushToAll(QUEUE_PEN, evt(EV_ABS, ABS_X, RM1_MAX_DIGI_X - ((message.userInput.y * RM1_MAX_DIGI_X) / clientConnection->height())));
-                    pushToAll(QUEUE_PEN, evt(EV_ABS, ABS_Y, (message.userInput.x * RM1_MAX_DIGI_Y) / clientConnection->width()));
-                    pushToAll(QUEUE_PEN, evt(EV_ABS, ABS_PRESSURE, (message.userInput.d * 4096) / 100));
+                    pushToAll(QUEUE_PEN, evt(EV_ABS, ABS_X, xTranslate));
+                    pushToAll(QUEUE_PEN, evt(EV_ABS, ABS_Y, yTranslate));
+                    pushToAll(QUEUE_PEN, evt(EV_ABS, ABS_PRESSURE, dTranslate));
                     pushToAll(QUEUE_PEN, evt(EV_SYN, SYN_REPORT, 0));
                     break;
                 case INPUT_BTN_PRESS:
@@ -197,29 +230,38 @@ static int createInEventMap(int type, int flags) {
 }
 
 int inputShimOpen(const char *file, int (*realOpen)(const char *name, int flags, mode_t mode), int flags, mode_t mode) {
-    if(strcmp(file, RM1_DIGITIZER) == 0) {
-        int fd = createInEventMap(QUEUE_PEN, flags);
-        CERR << "Open digitizer " << fd << std::endl;
-        return fd;
-    }
+    if(shimInputType == SHIM_INPUT_RM1) {
+        if(strcmp(file, RM1_DIGITIZER) == 0) {
+            int fd = createInEventMap(QUEUE_PEN, flags);
+            CERR << "Open digitizer " << fd << std::endl;
+            return fd;
+        }
 
-    if(strcmp(file, RM1_TOUCHSCREEN) == 0) {
-        int fd = createInEventMap(QUEUE_TOUCH, flags);
-        CERR << "Open touchscreen " << fd << std::endl;
-        return fd;
-    }
+        if(strcmp(file, RM1_TOUCHSCREEN) == 0) {
+            int fd = createInEventMap(QUEUE_TOUCH, flags);
+            CERR << "Open touchscreen " << fd << std::endl;
+            return fd;
+        }
 
-    if(strcmp(file, RM1_BUTTONS) == 0) {
-        int fd = createInEventMap(QUEUE_BUTTONS, flags);
-        CERR << "Open buttons " << fd << std::endl;
-        return fd;
-    }
+        if(strcmp(file, RM1_BUTTONS) == 0) {
+            int fd = createInEventMap(QUEUE_BUTTONS, flags);
+            CERR << "Open buttons " << fd << std::endl;
+            return fd;
+        }
+    } else if(shimInputType == SHIM_INPUT_RMPP) {
+        if(strcmp(file, RMPP_DIGITIZER) == 0) {
+            int fd = createInEventMap(QUEUE_PEN, flags);
+            CERR << "Open digitizer " << fd << std::endl;
+            return fd;
+        }
 
-    // for(int i = 0; i < sizeof(UNBOUND_INPUTS) / sizeof(const char *); i++) {
-    //     if(strcmp(file, UNBOUND_INPUTS[i]) == 0) {
-    //         return nullPipe.pipeRead;
-    //     }
-    // }
+        if(strcmp(file, RMPP_TOUCHSCREEN) == 0) {
+            int fd = createInEventMap(QUEUE_TOUCH, flags);
+            CERR << "Open touchscreen " << fd << std::endl;
+            return fd;
+        }
+
+    }
 
     return INTERNAL_SHIM_NOT_APPLICABLE;
 }

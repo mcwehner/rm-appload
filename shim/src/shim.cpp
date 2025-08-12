@@ -16,6 +16,7 @@
 bool shimModel;
 bool shimInput;
 bool shimFramebuffer;
+int shimInputType = SHIM_INPUT_RM1;
 
 bool readEnvvarBoolean(const char *name, bool _default) {
     char *value = getenv(name);
@@ -43,6 +44,15 @@ void __attribute__((constructor)) __construct () {
         } else {
             fprintf(stderr, "No such mode supported: %s\n", fbMode);
             abort();
+        }
+    }
+
+    char *shimMode = getenv("QTFB_SHIM_INPUT_MODE");
+    if(shimMode != NULL) {
+        if(strcmp(shimMode, "RM1") == 0) {
+            shimInputType = SHIM_INPUT_RM1;
+        } else if(strcmp(shimMode, "RMPP") == 0) {
+            shimInputType = SHIM_INPUT_RMPP;
         }
     }
 
