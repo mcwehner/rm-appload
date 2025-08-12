@@ -2,49 +2,29 @@ import QtQuick 2.5
 import QtQuick.Window 2.2
 import QtQuick.Controls 2.5
 import net.asivery.AppLoad 1.0
+import net.asivery.Framebuffer 1.0
 
 Rectangle {
     id: _appLoadView
-    visible: false
     anchors.fill: parent
     color: "#f0f0f0"
 
     property var windowArchetype: Qt.createComponent("window.qml")
+    property var absoluteRoot: _appLoadView
 
-    AppLoadCoordinator {
-        id: coord
-
-        onUnloading: () => {
-            if(!coord.loaded) return;
-            if(loader.item.unloading) loader.item.unloading();
-        }
-    }
-
-    function close() {
-        coord.close();
-    }
-
-    Loader {
-        id: loader
-        source: coord.applicationQMLRoot
-        active: coord.loaded
-        anchors.fill: parent
-
-        Connections {
-            target: loader.item
-            function onClose() {
-                _appLoadView.close();
-            }
-        }
-    }
+    signal requestClose
 
     AppLoadLibrary {
         id: library
     }
 
     Rectangle {
-        visible: !coord.loaded
         anchors.fill: parent
+        MouseArea {
+            // Eat the events.
+            anchors.fill: parent
+        }
+
         Rectangle {
             id: header
             anchors.top: parent.top
@@ -61,7 +41,9 @@ Rectangle {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: () => appLoadView.visible = false
+                    onClicked: () => {
+                        _appLoadView.requestClose();
+                    }
                 }
 
                 Image {
@@ -128,6 +110,7 @@ Rectangle {
             model: library.applications
             cellWidth: 200 + 20
             cellHeight: 200 + 20
+            interactive: false
 
             delegate: Rectangle {
                 required property var modelData
@@ -159,37 +142,55 @@ Rectangle {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: () => {
-                        if(modelData.external) {
-                            library.launchExternal(modelData.id);
-                        } else {
-                            coord.loadApplication(modelData.id);
+                    function launchWindow() {
+                        let qtfbKey = -1;
+                        let win;
+
+                        if(modelData.externalType === 2 /* EXTERNAL_QTFB */) {
+                            qtfbKey = Math.floor(Math.random() * 10000000);
                         }
-                    }
-                    onPressAndHold: () => {
-                        if(modelData.external) {
-                            return;
+                        if(modelData.externalType != 1 /* EXTERNAL_NOGUI */) {
+                            /* Create a new window*/
+                            if(library.isFrontendRunningFor(modelData.id) && !modelData.canHaveMultipleFrontends) {
+                                console.log("Cannot load multiple frontends for app. It doesn't support it.");
+                                return;
+                            }
+                            if(windowArchetype.status !== Component.Ready) {
+                                console.log("Window object not ready: " + windowArchetype.status);
+                                console.log(windowArchetype.errorString());
+                                return;
+                            }
+                            win = windowArchetype.createObject(absoluteRoot, { x: 100, y: 100 });
+                            if(win == null) {
+                                console.log("Failed to instantiate a window object!");
+                                return;
+                            }
+
+                            win.appName = modelData.name;
+                            win.supportsScaling = modelData.supportsScaling;
+
+                            win.globalWidth = _appLoadView.width;
+                            win.globalHeight = _appLoadView.height;
+
+                            win.qtfbKey = qtfbKey;
+
+                            win.closed.connect(() => win.destroy());
+
                         }
-                        /* Create a new window*/
-                        if(library.isFrontendRunningFor(modelData.id) && !modelData.canHaveMultipleFrontends) {
-                            console.log("Cannot load multiple frontends for app. It doesn't support it.");
-                            return;
-                        }
-                        if(windowArchetype.status !== Component.Ready) {
-                            console.log("Window object not ready: " + windowArchetype.status);
-                            console.log(windowArchetype.errorString());
-                            return;
-                        }
-                        const win = windowArchetype.createObject(_appLoadView, { x: 100, y: 100 });
-                        if(win == null) {
-                            console.log("Failed to instantiate a window object!");
-                            return;
+                        if(modelData.externalType == 0 /* INTERNAL */) {
+                            win.loadApplication(modelData.id);
+                        } else if(modelData.externalType == 1 /* EXTERNAL_NOGUI */ || modelData.externalType == 2 /* EXTERNAL_QTFB */) {
+                            win.appPid = library.launchExternal(modelData.id, qtfbKey);
                         }
 
-                        win.appName = modelData.name;
-                        win.supportsScaling = modelData.supportsScaling;
-                        win.closed.connect(() => win.destroy());
-                        win.loadApplication(modelData.id);
+                        return win;
+                    }
+
+                    onClicked: () => {
+                        launchWindow().maximize();
+                    }
+                    onPressAndHold: () => {
+                        launchWindow();
                     }
                 }
             }

@@ -15,7 +15,7 @@ Window {
 
         Loader {
             id: loader
-            source: "./appload.qml"
+            source: "qrc:/appload/qml/appload.qml"
             active: true
 
             width: 1620
@@ -29,14 +29,8 @@ Window {
             }
 
             anchors.centerIn: parent
-        }
-    }
 
-    Button {
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: 20
-        text: "Close"
-        onClicked: () => loader.item.close()
+            onLoaded: loader.item.visible = true
+        }
     }
 }
