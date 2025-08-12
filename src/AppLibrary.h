@@ -13,6 +13,11 @@
 
 #include "library.h"
 
+#define INTERNAL 0
+#define EXTERNAL_NOGUI 1
+#define EXTERNAL_QTFB 2
+#define EXTERNAL_TERMINAL 3
+
 class AppLoadApplication : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString id READ id CONSTANT)
@@ -20,20 +25,20 @@ class AppLoadApplication : public QObject {
     Q_PROPERTY(QString icon READ icon CONSTANT)
     Q_PROPERTY(bool supportsScaling READ supportsScaling)
     Q_PROPERTY(bool canHaveMultipleFrontends READ canHaveMultipleFrontends)
-    Q_PROPERTY(bool external READ external)
+    Q_PROPERTY(int externalType READ externalType) // 0 - not external, 1 - external (non-graphics), 2 - external (qtfb), 3 - terminal (literm)
 
 public:
     explicit AppLoadApplication(QObject *parent = nullptr)
         : QObject(parent) {}
-    AppLoadApplication(const QString &id, const QString &name, const QString &icon, bool supportsScaling, bool canHaveMultipleFrontends, bool external, QObject *parent = nullptr)
-        : QObject(parent), _id(id), _name(name), _icon(icon), _supportsScaling(supportsScaling), _canHaveMultipleFrontends(canHaveMultipleFrontends), _external(external) {}
+    AppLoadApplication(const QString &id, const QString &name, const QString &icon, bool supportsScaling, bool canHaveMultipleFrontends, int externalType, QObject *parent = nullptr)
+        : QObject(parent), _id(id), _name(name), _icon(icon), _supportsScaling(supportsScaling), _canHaveMultipleFrontends(canHaveMultipleFrontends), _externalType(externalType) {}
 
     QString id() const { return _id; }
     QString name() const { return _name; }
     QString icon() const { return _icon; }
     bool supportsScaling() const { return _supportsScaling; }
     bool canHaveMultipleFrontends() const { return _canHaveMultipleFrontends; }
-    bool external() const { return _external; }
+    int externalType() const { return _externalType; }
 
 private:
     QString _id;
@@ -41,7 +46,7 @@ private:
     QString _icon;
     bool _supportsScaling;
     bool _canHaveMultipleFrontends;
-    bool _external;
+    int _externalType;
 };
 
 class AppLoadLibrary : public QObject {
