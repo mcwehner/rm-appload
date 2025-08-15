@@ -16,6 +16,7 @@
 #include <dlfcn.h>
 #include <poll.h>
 
+#include "worldvars.h"
 #include "qtfb-client/qtfb-client.h"
 
 #define DEV_NULL "/dev/null"
@@ -45,30 +46,9 @@
 #define RMPP_MAX_TOUCH_Y 2832
 #define RMPP_MAX_PRESSURE 255
 
-extern qtfb::ClientConnection *clientConnection;
-extern int shimInputType;
-
-struct TouchSlotState {
-    int x, y;
-};
-
-std::map<int, TouchSlotState> touchStates;
-
 #define QUEUE_TOUCH 1
 #define QUEUE_PEN 2
 #define QUEUE_BUTTONS 3
-
-struct PerFDEventQueue {
-    int queueType;
-    int queueRead;
-    int queueWrite;
-
-    PerFDEventQueue(int e, int r, int w): queueType(e), queueRead(r), queueWrite(w) {}
-};
-static std::map<int, PerFDEventQueue> eventQueue;
-static struct {
-    int pipeRead, pipeWrite;
-} nullPipe;
 
 static struct input_event evt(unsigned short type, unsigned short code, int value) {
 #if (__BITS_PER_LONG != 32)
@@ -100,7 +80,7 @@ static int mapKey(int x) {
 }
 
 static void pushToAll(int queueType, struct input_event evt) {
-    for(auto &ref : eventQueue) {
+    for(auto &ref : WORLD.eventQueue) {
         if(ref.second.queueType == queueType) {
             write(ref.second.queueWrite, &evt, sizeof(evt));
         }
@@ -109,22 +89,22 @@ static void pushToAll(int queueType, struct input_event evt) {
 
 static void pollInputUpdates() {
     qtfb::ServerMessage message;
-    if(clientConnection) {
-        if(clientConnection->pollServerPacket(message) && message.type == MESSAGE_USERINPUT) {
+    if(WORLD.clientConnection) {
+        if(WORLD.clientConnection->pollServerPacket(message) && message.type == MESSAGE_USERINPUT) {
             // Did we get a packet?
             char state_a;
 
             int xTranslate, yTranslate, dTranslate;
-            switch(shimInputType) {
+            switch(WORLD.shimInputType) {
                 case SHIM_INPUT_RM1:
                     switch(message.userInput.inputType & 0xF0) {
                         case INPUT_TOUCH_PRESS:
-                            xTranslate = RM1_MAX_TOUCH_X - ((message.userInput.x * RM1_MAX_TOUCH_X) / (int) clientConnection->width());
-                            yTranslate = RM1_MAX_TOUCH_Y - ((message.userInput.y * RM1_MAX_TOUCH_Y) / (int) clientConnection->height());
+                            xTranslate = RM1_MAX_TOUCH_X - ((message.userInput.x * RM1_MAX_TOUCH_X) / (int) WORLD.clientConnection->width());
+                            yTranslate = RM1_MAX_TOUCH_Y - ((message.userInput.y * RM1_MAX_TOUCH_Y) / (int) WORLD.clientConnection->height());
                             break;
                         case INPUT_PEN_PRESS:
-                            xTranslate = RM1_MAX_DIGI_X - ((message.userInput.y * RM1_MAX_DIGI_X) / clientConnection->height());
-                            yTranslate = (message.userInput.x * RM1_MAX_DIGI_Y) / clientConnection->width();
+                            xTranslate = RM1_MAX_DIGI_X - ((message.userInput.y * RM1_MAX_DIGI_X) / WORLD.clientConnection->height());
+                            yTranslate = (message.userInput.x * RM1_MAX_DIGI_Y) / WORLD.clientConnection->width();
                             dTranslate = (message.userInput.d * 4096) / 100;
                             break;
                     }
@@ -132,12 +112,12 @@ static void pollInputUpdates() {
                 case SHIM_INPUT_RMPP:
                     switch(message.userInput.inputType & 0xF0) {
                         case INPUT_TOUCH_PRESS:
-                            xTranslate = ((message.userInput.x * RMPP_MAX_TOUCH_X) / (int) clientConnection->width());
-                            yTranslate = ((message.userInput.y * RMPP_MAX_TOUCH_Y) / (int) clientConnection->height());
+                            xTranslate = ((message.userInput.x * RMPP_MAX_TOUCH_X) / (int) WORLD.clientConnection->width());
+                            yTranslate = ((message.userInput.y * RMPP_MAX_TOUCH_Y) / (int) WORLD.clientConnection->height());
                             break;
                         case INPUT_PEN_PRESS:
-                            xTranslate = (message.userInput.x * RMPP_MAX_DIGI_X) / clientConnection->width();
-                            yTranslate = (message.userInput.y * RMPP_MAX_DIGI_Y) / clientConnection->height();
+                            xTranslate = (message.userInput.x * RMPP_MAX_DIGI_X) / WORLD.clientConnection->width();
+                            yTranslate = (message.userInput.y * RMPP_MAX_DIGI_Y) / WORLD.clientConnection->height();
                             dTranslate = (message.userInput.d * 255) / 100;
                             break;
                     }
@@ -198,19 +178,16 @@ static void pollInputUpdates() {
     }
 }
 
-static std::thread pollingThread;
-static bool pollingThreadRunning;
-
 static void killPollingThread() {
-    pollingThreadRunning = false;
-    // pollingThreadRunning.join();
+    WORLD.pollingThreadRunning = false;
+    // WORLD.pollingThreadRunning.join();
 }
 
 void startPollingThread() {
-    pipe((int*) &nullPipe);
-    pollingThreadRunning = true;
-    pollingThread = std::thread([&]() {
-        while(pollingThreadRunning) {
+    pipe((int*) &WORLD.nullPipe);
+    WORLD.pollingThreadRunning = true;
+    WORLD.pollingThread = std::thread([&]() {
+        while(WORLD.pollingThreadRunning) {
             pollInputUpdates();
         }
     });
@@ -225,12 +202,12 @@ static int createInEventMap(int type, int flags) {
         abort();
     }
     CERR << "Create evqueue pipe r:" << _pipe[0] << ", w:" << _pipe[1] << std::endl;
-    eventQueue.try_emplace(_pipe[0], type, _pipe[0], _pipe[1]);
+    WORLD.eventQueue.try_emplace(_pipe[0], type, _pipe[0], _pipe[1]);
     return _pipe[0];
 }
 
 int inputShimOpen(const char *file, int (*realOpen)(const char *name, int flags, mode_t mode), int flags, mode_t mode) {
-    if(shimInputType == SHIM_INPUT_RM1) {
+    if(WORLD.shimInputType == SHIM_INPUT_RM1) {
         if(strcmp(file, RM1_DIGITIZER) == 0) {
             int fd = createInEventMap(QUEUE_PEN, flags);
             CERR << "Open digitizer " << fd << std::endl;
@@ -248,7 +225,7 @@ int inputShimOpen(const char *file, int (*realOpen)(const char *name, int flags,
             CERR << "Open buttons " << fd << std::endl;
             return fd;
         }
-    } else if(shimInputType == SHIM_INPUT_RMPP) {
+    } else if(WORLD.shimInputType == SHIM_INPUT_RMPP) {
         if(strcmp(file, RMPP_DIGITIZER) == 0) {
             int fd = createInEventMap(QUEUE_PEN, flags);
             CERR << "Open digitizer " << fd << std::endl;
@@ -268,11 +245,11 @@ int inputShimOpen(const char *file, int (*realOpen)(const char *name, int flags,
 
 int inputShimClose(int fd, int (*realClose)(int)) {
     CERR << "Shim close " << fd << std::endl;
-    auto position = eventQueue.find(fd);
-    if(position != eventQueue.end()) {
+    auto position = WORLD.eventQueue.find(fd);
+    if(position != WORLD.eventQueue.end()) {
         realClose(position->second.queueRead);
         realClose(position->second.queueWrite);
-        eventQueue.erase(position);
+        WORLD.eventQueue.erase(position);
         return 0;
     }
 
@@ -313,9 +290,9 @@ static int fakeOrOverrideAbsInfo(
 #define IS_MATCHING_IOCTL(dir, type, nr) ((request & ~(_IOC_SIZEMASK << _IOC_SIZESHIFT)) == (_IOC(dir, type, nr, 0)))
 #define IS_MATCHING_IOCTL_S(dir, type, nr, size) (request == (_IOC(dir, type, nr, size)))
 int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(int fd, unsigned long request, char *ptr)) {
-    auto position = eventQueue.find(fd);
-    if(position == eventQueue.end()) return INTERNAL_SHIM_NOT_APPLICABLE;
-    const auto &ref = eventQueue.at(fd);
+    auto position = WORLD.eventQueue.find(fd);
+    if(position == WORLD.eventQueue.end()) return INTERNAL_SHIM_NOT_APPLICABLE;
+    const auto &ref = WORLD.eventQueue.at(fd);
     int ioctlInternalSize = _IOC_SIZE(request);
 
     unsigned cmdDir  = _IOC_DIR(request);

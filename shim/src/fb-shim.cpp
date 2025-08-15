@@ -2,6 +2,7 @@
 #include "fb-shim.h"
 #include "connection.h"
 #include "shim.h"
+#include "worldvars.h"
 #include "qtfb-client/qtfb-client.h"
 
 // Ehhh..
@@ -40,18 +41,18 @@ struct _32_bit_fb_fix_screeninfo {
 
 
 int fbShimOpen(const char *file) {
-    return strcmp(file, FILE_FB) == 0 ? shmFD : INTERNAL_SHIM_NOT_APPLICABLE; 
+    return strcmp(file, FILE_FB) == 0 ? WORLD.shmFD : INTERNAL_SHIM_NOT_APPLICABLE; 
 }
 
 int fbShimClose(int fd) {
-    return fd == shmFD ? 0 : INTERNAL_SHIM_NOT_APPLICABLE;
+    return fd == WORLD.shmFD ? 0 : INTERNAL_SHIM_NOT_APPLICABLE;
 }
 
 int fbShimIoctl(int fd, unsigned long request, char *ptr) {
-    if (fd == shmFD) {
+    if (fd == WORLD.shmFD) {
         if (request == MXCFB_SEND_UPDATE) {
             mxcfb_update_data *update = (mxcfb_update_data *) ptr;
-            clientConnection->sendPartialUpdate(
+            WORLD.clientConnection->sendPartialUpdate(
                 update->update_region.left,
                 update->update_region.top,
                 update->update_region.width,
@@ -66,12 +67,12 @@ int fbShimIoctl(int fd, unsigned long request, char *ptr) {
         }
         else if (request == FBIOGET_VSCREENINFO) {
             fb_var_screeninfo *screeninfo = (fb_var_screeninfo *)ptr;
-            screeninfo->xres = clientConnection->width();
-            screeninfo->yres = clientConnection->height();
+            screeninfo->xres = WORLD.clientConnection->width();
+            screeninfo->yres = WORLD.clientConnection->height();
             screeninfo->grayscale = 0;
             screeninfo->bits_per_pixel = 8 * BYTES_PER_PIXEL;
-            screeninfo->xres_virtual = clientConnection->width();
-            screeninfo->yres_virtual = clientConnection->height();
+            screeninfo->xres_virtual = WORLD.clientConnection->width();
+            screeninfo->yres_virtual = WORLD.clientConnection->height();
 
             screeninfo->red.offset = 11;
             screeninfo->red.length = 5;
@@ -85,9 +86,9 @@ int fbShimIoctl(int fd, unsigned long request, char *ptr) {
             return 0;
         } else if (request == FBIOGET_FSCREENINFO) {
             remapped_fb_var_screeninfo *screeninfo = (remapped_fb_var_screeninfo *)ptr;
-            screeninfo->smem_len = clientConnection->shmSize;
-            screeninfo->smem_start = (unsigned long) shmMemory;
-            screeninfo->line_length = clientConnection->width() * BYTES_PER_PIXEL;
+            screeninfo->smem_len = WORLD.clientConnection->shmSize;
+            screeninfo->smem_start = (unsigned long) WORLD.shmMemory;
+            screeninfo->line_length = WORLD.clientConnection->width() * BYTES_PER_PIXEL;
             constexpr char fb_id[] = "mxcfb";
             memcpy(screeninfo->id, fb_id, sizeof(fb_id));
             return 0;

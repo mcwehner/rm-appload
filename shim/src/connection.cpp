@@ -1,27 +1,18 @@
 #include "qtfb-client/qtfb-client.h"
 #include "shim.h"
-
-qtfb::FBKey shimFramebufferKey;
-uint8_t shimType = FBFMT_RM2FB;
-
-qtfb::ClientConnection *clientConnection = NULL;
-void *shmMemory = NULL;
-int shmFD = -1;
-
+#include "worldvars.h"
 
 void connectShim(){
     char *fbKey = getenv("QTFB_KEY");
     if(fbKey != NULL) {
-        shimFramebufferKey = (unsigned int) strtoul(fbKey, NULL, 10);
+        WORLD.shimFramebufferKey = (unsigned int) strtoul(fbKey, NULL, 10);
     }
 
     CERR << "Connecting to the shim!" << std::endl;
-    if(shmFD == -1) {
+    if(WORLD.shmFD == -1) {
         CERR << "Connecting to the shim step2!" << std::endl;
-        clientConnection = new qtfb::ClientConnection(shimFramebufferKey, shimType, {}, false);
-        shmFD = clientConnection->shmFD;
-        shmMemory = clientConnection->shm;
-
-        atexit([](){ delete clientConnection; });
+        WORLD.clientConnection = new qtfb::ClientConnection(WORLD.shimFramebufferKey, WORLD.shimType, {}, false);
+        WORLD.shmFD = WORLD.clientConnection->shmFD;
+        WORLD.shmMemory = WORLD.clientConnection->shm;
     }
 }
