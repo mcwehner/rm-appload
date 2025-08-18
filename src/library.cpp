@@ -3,6 +3,11 @@
 #include <QDebug>
 #include <QDir>
 
+namespace appload::library {
+    static std::map<QString, LoadedApplication*> applications;
+    static std::map<QString, ExternalApplication*> externalApplications;
+};
+
 static QString randString(int len)
 {
     QString str;

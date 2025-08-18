@@ -93,8 +93,6 @@ namespace appload::library {
         void parseManifest();
     };
 
-    static std::map<QString, LoadedApplication*> applications;
-    static std::map<QString, ExternalApplication*> externalApplications;
     int loadApplications();
     void terminateExternal(qint64 pid);
     void addGlobalLibraryHandle(AppLoadLibrary *ptr);

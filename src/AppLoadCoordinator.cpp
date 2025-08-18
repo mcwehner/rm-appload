@@ -18,12 +18,12 @@ AppLoadCoordinator::~AppLoadCoordinator() {
 }
 
 void AppLoadCoordinator::close() {
-    appload::management::closeUIInstance(_applicationQMLRoot);
+    appload::management::closeUIInstance(applicationLoadedID);
     unload();
 }
 
 void AppLoadCoordinator::terminate() {
-    appload::management::terminate(_applicationQMLRoot);
+    appload::management::terminate(applicationLoadedID);
 }
 
 // Internal method used to remotely unload the UI of coordinators after one terminates.
