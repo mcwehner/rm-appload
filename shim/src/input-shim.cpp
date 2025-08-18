@@ -58,14 +58,8 @@ std::map<int, TouchSlotState> touchStates;
 #define QUEUE_PEN 2
 #define QUEUE_BUTTONS 3
 
-struct PerFDEventQueue {
-    int queueType;
-    int queueRead;
-    int queueWrite;
+struct PIDEventQueue *pidEventQueue;
 
-    PerFDEventQueue(int e, int r, int w): queueType(e), queueRead(r), queueWrite(w) {}
-};
-static std::map<int, PerFDEventQueue> eventQueue;
 static struct {
     int pipeRead, pipeWrite;
 } nullPipe;
@@ -100,10 +94,14 @@ static int mapKey(int x) {
 }
 
 static void pushToAll(int queueType, struct input_event evt) {
-    for(auto &ref : eventQueue) {
-        if(ref.second.queueType == queueType) {
-            write(ref.second.queueWrite, &evt, sizeof(evt));
+    struct PIDEventQueue *current = pidEventQueue;
+    while(current != NULL) {
+        for(auto &ref : current->eventQueue) {
+            if(ref.second.queueType == queueType) {
+                write(ref.second.queueWrite, &evt, sizeof(evt));
+            }
         }
+        current = current->next;
     }
 }
 
@@ -225,7 +223,7 @@ static int createInEventMap(int type, int flags) {
         abort();
     }
     CERR << "Create evqueue pipe r:" << _pipe[0] << ", w:" << _pipe[1] << std::endl;
-    eventQueue.try_emplace(_pipe[0], type, _pipe[0], _pipe[1]);
+    pidEventQueue->eventQueue.try_emplace(_pipe[0], type, _pipe[0], _pipe[1]);
     return _pipe[0];
 }
 
@@ -268,11 +266,13 @@ int inputShimOpen(const char *file, int (*realOpen)(const char *name, int flags,
 
 int inputShimClose(int fd, int (*realClose)(int)) {
     CERR << "Shim close " << fd << std::endl;
-    auto position = eventQueue.find(fd);
-    if(position != eventQueue.end()) {
+    // Only close in own event queue.
+    // TODO: Should it then be migrated downwards to children??
+    auto position = pidEventQueue->eventQueue.find(fd);
+    if(position != pidEventQueue->eventQueue.end()) {
         realClose(position->second.queueRead);
         realClose(position->second.queueWrite);
-        eventQueue.erase(position);
+        pidEventQueue->eventQueue.erase(position);
         return 0;
     }
 
@@ -313,9 +313,17 @@ static int fakeOrOverrideAbsInfo(
 #define IS_MATCHING_IOCTL(dir, type, nr) ((request & ~(_IOC_SIZEMASK << _IOC_SIZESHIFT)) == (_IOC(dir, type, nr, 0)))
 #define IS_MATCHING_IOCTL_S(dir, type, nr, size) (request == (_IOC(dir, type, nr, size)))
 int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(int fd, unsigned long request, char *ptr)) {
-    auto position = eventQueue.find(fd);
-    if(position == eventQueue.end()) return INTERNAL_SHIM_NOT_APPLICABLE;
-    const auto &ref = eventQueue.at(fd);
+    PerFDEventQueue *ref = NULL;
+    PIDEventQueue *current = pidEventQueue;
+    while(current) {
+        auto position = current->eventQueue.find(fd);
+        if(position != current->eventQueue.end()) {
+            ref = &current->eventQueue.at(fd);
+        }
+
+        current = current->next;
+    }
+    if(!ref) return INTERNAL_SHIM_NOT_APPLICABLE;
     int ioctlInternalSize = _IOC_SIZE(request);
 
     unsigned cmdDir  = _IOC_DIR(request);
@@ -323,7 +331,7 @@ int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(in
     unsigned cmdNr   = _IOC_NR(request);
     unsigned cmdSize = _IOC_SIZE(request);
 
-    if (ref.queueType == QUEUE_TOUCH) {
+    if (ref->queueType == QUEUE_TOUCH) {
         CERR << "Touchscreen IOCTL: " << request << std::endl;
         int status;
 
@@ -385,7 +393,7 @@ int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(in
         return 0;
     }
 
-    if(ref.queueType == QUEUE_PEN) {
+    if(ref->queueType == QUEUE_PEN) {
         CERR << "Digitizer IOCTL: " << request << std::endl;
 
         int status;
@@ -410,7 +418,7 @@ int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(in
         return 0;
     }
 
-    if (ref.queueType == QUEUE_BUTTONS) {
+    if (ref->queueType == QUEUE_BUTTONS) {
         CERR << "Buttons IOCTL: " << request << std::endl;
         int status;
 

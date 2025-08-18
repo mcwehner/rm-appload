@@ -27,6 +27,16 @@ bool readEnvvarBoolean(const char *name, bool _default) {
 }
 
 void __attribute__((constructor)) __construct () {
+    if(pidEventQueue != NULL) {
+        return;
+    }
+    pidEventQueue = new PIDEventQueue;
+    pthread_atfork(NULL, NULL, [](){
+        auto previous = pidEventQueue;
+        pidEventQueue = new PIDEventQueue;
+        pidEventQueue->next = previous;
+    });
+
     shimModel = readEnvvarBoolean("QTFB_SHIM_MODEL", true);
     shimInput = readEnvvarBoolean("QTFB_SHIM_INPUT", true);
     shimFramebuffer = readEnvvarBoolean("QTFB_SHIM_FB", true);

@@ -7,10 +7,12 @@ uint8_t shimType = FBFMT_RM2FB;
 qtfb::ClientConnection *clientConnection = NULL;
 void *shmMemory = NULL;
 int shmFD = -1;
+int initiatorPID = 0;
 
 
 void connectShim(){
     char *fbKey = getenv("QTFB_KEY");
+    initiatorPID = getpid();
     if(fbKey != NULL) {
         shimFramebufferKey = (unsigned int) strtoul(fbKey, NULL, 10);
     }
@@ -22,6 +24,6 @@ void connectShim(){
         shmFD = clientConnection->shmFD;
         shmMemory = clientConnection->shm;
 
-        atexit([](){ delete clientConnection; });
+        atexit([](){ if(initiatorPID == getpid()) delete clientConnection; });
     }
 }
