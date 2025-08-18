@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.14)
 project(qtfb-shim VERSION 0.1.0 LANGUAGES CXX)
 
 set(QTFB_SHIM_BASE_SOURCES
-    src/worldvars.cpp
     src/shim.cpp
     src/connection.cpp
     src/input-shim.cpp
