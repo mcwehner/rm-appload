@@ -328,7 +328,6 @@ FocusScope {
             id: coord
 
             onUnloading: () => {
-                if(!coord.loaded) return;
                 let unloadingFunction;
                 if(supportsScaling) {
                     unloadingFunction = loader.item.unloading;
