@@ -7,16 +7,18 @@ import net.asivery.Framebuffer 1.0
 FocusScope {
     id: root
     Drag.active: topbarDragHandle.drag.active && !fullscreen
-    implicitWidth: 500
-    implicitHeight: 700
     width: root.globalWidth / 3
     height: _height + topbar.height
     z: 100
 
     property int globalWidth: 0
     property int globalHeight: 0
-    readonly property int minWidth: 400
-    readonly property int minHeight: 700
+    property int minWidth: 400
+    property int minHeight: 700
+    property int scaledContentWidth: 0
+    property int scaledContentHeight: 0
+    implicitWidth: 0
+    implicitHeight: 0
 
 
     property alias appName: _appName.text
@@ -306,7 +308,41 @@ FocusScope {
 
         FBController {
             id: windowCanvas
-            anchors.fill: parent
+            property var deviceAspectRatio: root.globalWidth / root.globalHeight
+            property var contentAspectRatio: root.scaledContentWidth / root.scaledContentHeight
+            states: [
+                State {
+                    name: "a"
+                    when: windowCanvas.deviceAspectRatio == windowCanvas.contentAspectRatio
+                    PropertyChanges {
+                        target: windowCanvas
+                        width: parent.width
+                        height: parent.height
+                    }
+                },
+                State {
+                    name: "b"
+                    when: windowCanvas.deviceAspectRatio > windowCanvas.contentAspectRatio
+
+                    PropertyChanges {
+                        target: windowCanvas
+                        height: parent.height
+                        width: windowCanvas.contentAspectRatio * parent.height
+                    }
+                },
+                State {
+                    name: "c"
+                    when: windowCanvas.contentAspectRatio > windowCanvas.deviceAspectRatio
+
+                    PropertyChanges {
+                        target: windowCanvas
+                        width: parent.width
+                        height: parent.width / windowCanvas.contentAspectRatio
+                    }
+                }
+            ]
+            anchors.centerIn: parent
+
             visible: qtfbKey != -1
             allowScaling: true
             framebufferID: qtfbKey
@@ -332,7 +368,7 @@ FocusScope {
                 if(supportsScaling) {
                     unloadingFunction = loader.item.unloading;
                 } else {
-                    unloadingFunction = loaderScaled.item.unloading;
+                    unloadingFunction = loaderScaled.item?.unloading;
                 }
                 if(unloadingFunction) unloadingFunction();
                 root.closed();
@@ -346,8 +382,8 @@ FocusScope {
             active: coord.loaded && !supportsScaling
             anchors.centerIn: parent
 
-            width: root.globalWidth
-            height: root.globalHeight
+            width: root.scaledContentWidth
+            height: root.scaledContentHeight
 
             transform: Scale {
                 origin.x: loaderScaled.width / 2

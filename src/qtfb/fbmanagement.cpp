@@ -72,28 +72,37 @@ void qtfb::management::unregisterController(FBKey key) {
 static bool createSHM(qtfb::management::ClientBackend *connection, int shmType, int width, int height) {
     size_t shmSize;
     QImage::Format format;
+    int bpl;
 
     switch(shmType) {
         case FBFMT_RM2FB:
             shmSize = height * width * 2;
             format = QImage::Format::Format_RGB16;
+            bpl = 2 * width;
             break;
         case FBFMT_RMPP_RGB888:
+        case FBFMT_RMPPM_RGB888:
             shmSize = height * width * 3;
+            bpl = 3 * width;
             format = QImage::Format::Format_RGB888;
             break;
         case FBFMT_RMPP_RGBA8888:
+        case FBFMT_RMPPM_RGBA8888:
             shmSize = height * width * 4;
+            bpl = 4 * width;
             format = QImage::Format::Format_RGBA8888;
             break;
         case FBFMT_RMPP_RGB565:
+        case FBFMT_RMPPM_RGB565:
             shmSize = height * width * 2;
+            bpl = 2 * width;
             format = QImage::Format::Format_RGB16;
             break;
         default:
             CERR << "Unknown SHM type" << shmType << std::endl;
             return false;
     }
+    CERR << "Client is connecting in " << shmType << " mode. Resolution is set to " << width << "x" << height << std::endl;
 
     connection->shmSize = shmSize;
     connection->shmType = shmType;
@@ -121,9 +130,9 @@ static bool createSHM(qtfb::management::ClientBackend *connection, int shmType, 
         connection->shmKey = -1;
         return false;
     }
-    CERR << "Defined SHM size" << shmSize << "at" << connection->shm << std::endl;
+    CERR << "Defined SHM (" << shmSize << " bytes) at " << (void *) connection->shm << std::endl;
     // We have the SHM defined.
-    connection->image = new QImage(connection->shm, width, height, format);
+    connection->image = new QImage(connection->shm, width, height, bpl, format, nullptr, nullptr);
 
     return true;
 }
@@ -136,6 +145,10 @@ static bool createDefaultSHM(qtfb::management::ClientBackend *connection, int sh
         case FBFMT_RMPP_RGBA8888:
         case FBFMT_RMPP_RGB565:
             return createSHM(connection, shmType, RMPP_WIDTH, RMPP_HEIGHT);
+        case FBFMT_RMPPM_RGB888:
+        case FBFMT_RMPPM_RGBA8888:
+        case FBFMT_RMPPM_RGB565:
+            return createSHM(connection, shmType, RMPPM_WIDTH, RMPPM_HEIGHT);
         default:
             return createSHM(connection, shmType, -1, -1);
     }
@@ -216,7 +229,7 @@ static int handleUpdateRegion(qtfb::management::ClientConnection *connection, qt
         int x, y, w, h;
         switch(inbound->update.type) {
             case UPDATE_ALL:
-                CERR << "Updated all of framebuffer" << connection->fbKey << std::endl;
+                CERR << "Updated all of framebuffer " << connection->fbKey << std::endl;
                 QMetaObject::invokeMethod(controller, [controller]() {
                     controller->markedUpdate();
                 }, Qt::QueuedConnection);

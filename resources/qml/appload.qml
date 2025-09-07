@@ -142,6 +142,18 @@ Rectangle {
 
                 MouseArea {
                     anchors.fill: parent
+                    function getMinResolutionFor(device) {
+                        switch(device) {
+                            case "original": return [400, 533];
+                            case "move": return [400, 688];
+                        }
+                    }
+                    function getResolutionOf(device) {
+                        switch(device) {
+                            case "original": return [1620, 2160];
+                            case "move": return [954, 1696];
+                        }
+                    }
                     function launchWindow() {
                         let qtfbKey = -1;
                         let win;
@@ -171,6 +183,20 @@ Rectangle {
 
                             win.globalWidth = _appLoadView.width;
                             win.globalHeight = _appLoadView.height;
+                            let deviceAspectRatio, applicationAspectRatio = modelData.aspectRatio;
+                            const aspectRatioId = Math.round(100 * _appLoadView.width / _appLoadView.height);
+                            switch(aspectRatioId) {
+                                case 75:
+                                    deviceAspectRatio = "original";
+                                    break;
+                                case 56:
+                                    deviceAspectRatio = "move";
+                                    break
+                            }
+                            const realAspectRatio = applicationAspectRatio == "auto" ? deviceAspectRatio : applicationAspectRatio;
+                            console.log(`Application starting on device with ${deviceAspectRatio} aspect ratio (${aspectRatioId}). Real aspect ratio of the application is going to be ${realAspectRatio}`);
+                            [win.minWidth, win.minHeight] = [win.implicitWidth, win.implicitHeight] = getMinResolutionFor(realAspectRatio);
+                            [win.scaledContentWidth, win.scaledContentHeight] = getResolutionOf(realAspectRatio);
 
                             win.qtfbKey = qtfbKey;
 

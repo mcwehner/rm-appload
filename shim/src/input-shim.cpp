@@ -24,9 +24,6 @@
 
 #define RM1_MAX_DIGI_X 20967
 #define RM1_MAX_DIGI_Y 15725
-#define RMPP_MAX_DIGI_X 11180
-#define RMPP_MAX_DIGI_Y 15340
-
 #define RM1_MAX_TOUCH_X 767
 #define RM1_MAX_TOUCH_Y 1023
 #define RM1_MAX_PRESSURE 4095
@@ -38,7 +35,16 @@
 
 #define RMPP_MAX_TOUCH_X 2064
 #define RMPP_MAX_TOUCH_Y 2832
-#define RMPP_MAX_PRESSURE 255
+#define RMPP_MAX_PRESSURE 4096
+#define RMPP_MAX_DIGI_X 11180
+#define RMPP_MAX_DIGI_Y 15340
+
+
+#define RMPPM_MAX_TOUCH_X 1248
+#define RMPPM_MAX_TOUCH_Y 2208
+#define RMPPM_MAX_PRESSURE 4096
+#define RMPPM_MAX_DIGI_X 6760
+#define RMPPM_MAX_DIGI_Y 11960
 
 extern qtfb::ClientConnection *clientConnection;
 extern int shimInputType;
@@ -132,6 +138,19 @@ static void pollInputUpdates() {
                         case INPUT_PEN_PRESS:
                             xTranslate = (message.userInput.x * RMPP_MAX_DIGI_X) / clientConnection->width();
                             yTranslate = (message.userInput.y * RMPP_MAX_DIGI_Y) / clientConnection->height();
+                            dTranslate = (message.userInput.d * 255) / 100;
+                            break;
+                    }
+                    break;
+                case SHIM_INPUT_RMPPM:
+                    switch(message.userInput.inputType & 0xF0) {
+                        case INPUT_TOUCH_PRESS:
+                            xTranslate = ((message.userInput.x * RMPPM_MAX_TOUCH_X) / (int) clientConnection->width());
+                            yTranslate = ((message.userInput.y * RMPPM_MAX_TOUCH_Y) / (int) clientConnection->height());
+                            break;
+                        case INPUT_PEN_PRESS:
+                            xTranslate = (message.userInput.x * RMPPM_MAX_DIGI_X) / clientConnection->width();
+                            yTranslate = (message.userInput.y * RMPPM_MAX_DIGI_Y) / clientConnection->height();
                             dTranslate = (message.userInput.d * 255) / 100;
                             break;
                     }
@@ -302,6 +321,21 @@ static int fakeOrOverrideAbsInfo(
 
 #define IS_MATCHING_IOCTL(dir, type, nr) ((request & ~(_IOC_SIZEMASK << _IOC_SIZESHIFT)) == (_IOC(dir, type, nr, 0)))
 #define IS_MATCHING_IOCTL_S(dir, type, nr, size) (request == (_IOC(dir, type, nr, size)))
+
+#define CASE_FAMILY(name, device) case SHIM_INPUT_ ## device: return device ## _MAX_ ## name;
+#define MAXFUNC(name) int getMaxEventValueFor ## name() { \
+    switch(shimInputType) {                               \
+        CASE_FAMILY(name, RM1)                            \
+        CASE_FAMILY(name, RMPP)                           \
+        CASE_FAMILY(name, RMPPM)                          \
+    }                                                     \
+    return -1;                                            \
+}
+MAXFUNC(DIGI_X)
+MAXFUNC(DIGI_Y)
+MAXFUNC(TOUCH_X)
+MAXFUNC(TOUCH_Y)
+
 int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(int fd, unsigned long request, char *ptr)) {
     PerFDEventQueue *ref = NULL;
     PIDEventQueue *current = pidEventQueue;
@@ -327,12 +361,12 @@ int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(in
 
         if (IS_MATCHING_IOCTL_S(_IOC_READ, 'E', 0x40 + ABS_MT_POSITION_X, sizeof(input_absinfo))) {
             return fakeOrOverrideAbsInfo(fd, request, ptr, realIoctl,
-                                        0, shimInputType == SHIM_INPUT_RM1 ? RM1_MAX_TOUCH_X : RMPP_MAX_TOUCH_X,
+                                        0, getMaxEventValueForTOUCH_X(),
                                         100, 0, 0);
         }
         if (IS_MATCHING_IOCTL_S(_IOC_READ, 'E', 0x40 + ABS_MT_POSITION_Y, sizeof(input_absinfo))) {
             return fakeOrOverrideAbsInfo(fd, request, ptr, realIoctl,
-                                        0, shimInputType == SHIM_INPUT_RM1 ? RM1_MAX_TOUCH_Y : RMPP_MAX_TOUCH_Y,
+                                        0, getMaxEventValueForTOUCH_Y(),
                                         100, 0, 0);
         }
         if (IS_MATCHING_IOCTL_S(_IOC_READ, 'E', 0x40 + ABS_MT_ORIENTATION, sizeof(input_absinfo))) {
@@ -396,12 +430,12 @@ int inputShimIoctl(int fd, unsigned long request, char *ptr, int (*realIoctl)(in
 
         if (IS_MATCHING_IOCTL_S(_IOC_READ, 'E', 0x40 + ABS_X, sizeof(input_absinfo))) {
             return fakeOrOverrideAbsInfo(fd, request, ptr, realIoctl,
-                                        0, shimInputType == SHIM_INPUT_RM1 ? RM1_MAX_DIGI_X : RMPP_MAX_DIGI_X,
+                                        0, getMaxEventValueForDIGI_X(),
                                         0, 0, 0);
         }
         if (IS_MATCHING_IOCTL_S(_IOC_READ, 'E', 0x40 + ABS_Y, sizeof(input_absinfo))) {
             return fakeOrOverrideAbsInfo(fd, request, ptr, realIoctl,
-                                        0, shimInputType == SHIM_INPUT_RM1 ? RM1_MAX_DIGI_Y : RMPP_MAX_DIGI_Y,
+                                        0, getMaxEventValueForDIGI_Y(),
                                         0, 0, 0);
         }
 

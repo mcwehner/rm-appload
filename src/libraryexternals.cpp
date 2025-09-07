@@ -60,6 +60,14 @@ void appload::library::ExternalApplication::parseManifest() {
     for(auto entry = env.begin(); entry != env.end(); entry++) {
         environment[entry.key()] = entry.value().toString();
     }
+    QString aspectRatio = jsonObject.value("aspectRatio").toString("auto").toLower();
+    if(aspectRatio == "original") {
+        this->aspectRatio = AspectRatio::ORIGINAL;
+    } else if(aspectRatio == "move") {
+        this->aspectRatio = AspectRatio::MOVE;
+    } else if(aspectRatio == "auto") {
+        this->aspectRatio = AspectRatio::AUTO;
+    }
 
     valid = !appName.isEmpty() && !execPath.isEmpty();
     if(valid) {
@@ -128,3 +136,6 @@ void appload::library::terminateExternal(qint64 pid) {
     kill(pid, SIGTERM);
     sendPidDiedMessage(pid);
 }
+
+
+appload::library::AspectRatio appload::library::ExternalApplication::getAspectRatio() const { return aspectRatio; }

@@ -25,17 +25,19 @@ class AppLoadApplication : public QObject {
     Q_PROPERTY(QString icon READ icon CONSTANT)
     Q_PROPERTY(bool supportsScaling READ supportsScaling)
     Q_PROPERTY(bool canHaveMultipleFrontends READ canHaveMultipleFrontends)
-    Q_PROPERTY(int externalType READ externalType) // 0 - not external, 1 - external (non-graphics), 2 - external (qtfb), 3 - terminal (literm)
+    Q_PROPERTY(int externalType READ externalType) // 0 - not external, 1 - external (non-graphics), 2 - external (qtfb)
+    Q_PROPERTY(QString aspectRatio READ aspectRatio CONSTANT)
 
 public:
     explicit AppLoadApplication(QObject *parent = nullptr)
         : QObject(parent) {}
-    AppLoadApplication(const QString &id, const QString &name, const QString &icon, bool supportsScaling, bool canHaveMultipleFrontends, int externalType, QObject *parent = nullptr)
-        : QObject(parent), _id(id), _name(name), _icon(icon), _supportsScaling(supportsScaling), _canHaveMultipleFrontends(canHaveMultipleFrontends), _externalType(externalType) {}
+    AppLoadApplication(const QString &id, const QString &name, const QString &icon, bool supportsScaling, bool canHaveMultipleFrontends, int externalType, appload::library::AspectRatio aspectRatio, QObject *parent = nullptr)
+        : QObject(parent), _id(id), _name(name), _icon(icon), _supportsScaling(supportsScaling), _canHaveMultipleFrontends(canHaveMultipleFrontends), _externalType(externalType), _aspectRatio(aspectRatio) {}
 
     QString id() const { return _id; }
     QString name() const { return _name; }
     QString icon() const { return _icon; }
+    QString aspectRatio() const { return appload::library::aspectRatioToString(_aspectRatio); }
     bool supportsScaling() const { return _supportsScaling; }
     bool canHaveMultipleFrontends() const { return _canHaveMultipleFrontends; }
     int externalType() const { return _externalType; }
@@ -47,6 +49,7 @@ private:
     bool _supportsScaling;
     bool _canHaveMultipleFrontends;
     int _externalType;
+    appload::library::AspectRatio _aspectRatio;
 };
 
 class AppLoadLibrary : public QObject {
@@ -103,6 +106,7 @@ public:
                                                         entry.second->supportsScaling(),
                                                         entry.second->canHaveMultipleFrontends(),
                                                         INTERNAL,
+                                                        appload::library::AspectRatio::AUTO,
                                                         this));
         }
         for (const auto &entry : appload::library::getExternals()) {
@@ -112,6 +116,7 @@ public:
                                                         false,
                                                         true,
                                                         entry.second->isQTFB() ? EXTERNAL_QTFB : EXTERNAL_NOGUI,
+                                                        entry.second->getAspectRatio(),
                                                         this));
         }
     }

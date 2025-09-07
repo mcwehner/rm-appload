@@ -34,6 +34,11 @@
 class AppLoadLibrary;
 
 namespace appload::library {
+    enum class AspectRatio {
+        ORIGINAL, MOVE, AUTO,
+    };
+    QString aspectRatioToString(AspectRatio ratio);
+
     class ExternalApplication {
         public:
         ExternalApplication(QString root);
@@ -41,6 +46,7 @@ namespace appload::library {
         QString getAppName() const;
         qint64 launch(int qtfbKey) const;
         bool isQTFB() const;
+        AspectRatio getAspectRatio() const;
 
         bool valid = false;
 
@@ -54,6 +60,7 @@ namespace appload::library {
         QStringList args;
         std::map<QString, QString> environment;
         bool _isQTFB;
+        AspectRatio aspectRatio;
 
         void parseManifest();
     };

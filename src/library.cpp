@@ -262,3 +262,12 @@ const std::map<QString, appload::library::LoadedApplication*> &appload::library:
 const std::map<QString, appload::library::ExternalApplication *>&appload::library::getExternals() {
     return appload::library::externalApplications;
 }
+
+QString appload::library::aspectRatioToString(AspectRatio ratio) {
+    switch(ratio) {
+        case appload::library::AspectRatio::ORIGINAL: return "original";
+        case appload::library::AspectRatio::MOVE: return "move";
+        case appload::library::AspectRatio::AUTO: return "auto";
+    }
+    return "";
+}

@@ -10,6 +10,7 @@
 #include "fb-shim.h"
 #include "input-shim.h"
 #include <sys/mman.h>
+#include <asm/fcntl.h>
 #include "qtfb-client/common.h"
 #include "connection.h"
 #include "fileident.h"
@@ -24,11 +25,40 @@
 #define RMPP_TOUCHSCREEN "/dev/input/event3"
 #define RMPP_DIGITIZER "/dev/input/event2"
 
+#define DEV_TYPE_RM1 0
+#define DEV_TYPE_RMPP 1
+#define DEV_TYPE_RMPPM 2
+
 bool shimModel;
 bool shimInput;
 bool shimFramebuffer;
 int shimInputType = SHIM_INPUT_RM1;
 std::set<fileident_t> *identDigitizer, *identTouchScreen, *identButtons;
+int realDeviceType;
+
+void readRealDeviceType() {
+    static int (*realOpen)(const char *, int, mode_t) = (int (*)(const char *, int, mode_t)) dlsym(RTLD_NEXT, "open");
+    int fd = realOpen(FILE_MODEL, O_RDONLY, 0);
+    if(fd == -1) {
+        CERR << "Cannot open model file" << std::endl;
+        realDeviceType = SHIM_INPUT_RM1;
+        return;
+    }
+    char buffer[256];
+    memset(buffer, 0, sizeof(buffer));
+    read(fd, buffer, sizeof(buffer));
+    close(fd);
+    for(int i = 0; i<sizeof(buffer); i++) {
+        if(buffer[i] >= 'a' && buffer[i] <= 'z') buffer[i] -= ' ';
+    }
+    if(strstr(buffer, "FERRARI") != NULL) {
+        realDeviceType = DEV_TYPE_RMPP;
+    } else if(strstr(buffer, "CHIAPPA") != NULL) {
+        realDeviceType = DEV_TYPE_RMPPM;
+    } else {
+        realDeviceType = DEV_TYPE_RM1;
+    }
+}
 
 bool readEnvvarBoolean(const char *name, bool _default) {
     char *value = getenv(name);
@@ -68,6 +98,8 @@ void __attribute__((constructor)) __construct () {
     identTouchScreen = new std::set<fileident_t>();
     identButtons = new std::set<fileident_t>();
 
+    readRealDeviceType();
+
     char *fbMode = getenv("QTFB_SHIM_MODE");
     if(fbMode != NULL) {
         if(strcmp(fbMode, "RM2FB") == 0) {
@@ -78,6 +110,50 @@ void __attribute__((constructor)) __construct () {
             shimType = FBFMT_RMPP_RGBA8888;
         } else if(strcmp(fbMode, "RGB565") == 0) {
             shimType = FBFMT_RMPP_RGB565;
+        } else if(strcmp(fbMode, "M_RGB888") == 0) {
+            shimType = FBFMT_RMPPM_RGB888;
+        } else if(strcmp(fbMode, "M_RGBA8888") == 0) {
+            shimType = FBFMT_RMPPM_RGBA8888;
+        } else if(strcmp(fbMode, "M_RGB565") == 0) {
+            shimType = FBFMT_RMPPM_RGB565;
+        } else if(strcmp(fbMode, "N_RGB888") == 0) {
+            switch(realDeviceType) {
+                case DEV_TYPE_RM1:
+                    CERR << "QTFB does not support native RGB888 mode for rM1" << std::endl;
+                    abort();
+                    break;
+                case DEV_TYPE_RMPP:
+                    shimType = FBFMT_RMPP_RGB888;
+                    break;
+                case DEV_TYPE_RMPPM:
+                    shimType = FBFMT_RMPPM_RGB888;
+                    break;
+            }
+        } else if(strcmp(fbMode, "N_RGBA8888") == 0) {
+            switch(realDeviceType) {
+                case DEV_TYPE_RM1:
+                    CERR << "QTFB does not support native RGBA8888 mode for rM1" << std::endl;
+                    abort();
+                    break;
+                case DEV_TYPE_RMPP:
+                    shimType = FBFMT_RMPP_RGBA8888;
+                    break;
+                case DEV_TYPE_RMPPM:
+                    shimType = FBFMT_RMPPM_RGBA8888;
+                    break;
+            }
+        } else if(strcmp(fbMode, "N_RGB565") == 0) {
+            switch(realDeviceType) {
+                case DEV_TYPE_RM1:
+                    shimType = FBFMT_RM2FB;
+                    break;
+                case DEV_TYPE_RMPP:
+                    shimType = FBFMT_RMPP_RGB565;
+                    break;
+                case DEV_TYPE_RMPPM:
+                    shimType = FBFMT_RMPPM_RGB565;
+                    break;
+            }
         } else {
             fprintf(stderr, "No such mode supported: %s\n", fbMode);
             abort();
@@ -90,8 +166,14 @@ void __attribute__((constructor)) __construct () {
             shimInputType = SHIM_INPUT_RM1;
         } else if(strcmp(shimMode, "RMPP") == 0) {
             shimInputType = SHIM_INPUT_RMPP;
+        } else if(strcmp(shimMode, "RMPPM") == 0) {
+            shimInputType = SHIM_INPUT_RMPPM;
+        } else if(strcmp(shimMode, "NATIVE") == 0) {
+            shimInputType = realDeviceType;
         }
     }
+
+    CERR << "Configured FB type to " << shimType << ", input to " << shimInputType << std::endl;
 
 
     const char *pathDigitizer, *pathTouchScreen, *pathButtons;
@@ -100,7 +182,7 @@ void __attribute__((constructor)) __construct () {
         pathDigitizer = RM1_DIGITIZER;
         pathTouchScreen = RM1_TOUCHSCREEN;
         pathButtons = RM1_BUTTONS;
-    } else if(shimInputType == SHIM_INPUT_RMPP) {
+    } else if(shimInputType == SHIM_INPUT_RMPP || shimInputType == SHIM_INPUT_RMPPM) {
         pathDigitizer = RMPP_DIGITIZER;
         pathTouchScreen = RMPP_TOUCHSCREEN;
         pathButtons = "<NONEXISTENT>";
